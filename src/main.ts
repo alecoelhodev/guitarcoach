@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config/env.validation';
@@ -12,7 +12,12 @@ async function bootstrap(): Promise<void> {
   const apiVersion = configService.get('API_VERSION', { infer: true });
   const port = configService.get('PORT', { infer: true });
 
-  app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`);
+  app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`, {
+    exclude: [
+      { path: 'health/live', method: RequestMethod.GET },
+      { path: 'health/ready', method: RequestMethod.GET },
+    ],
+  });
   app.enableCors();
   app.enableShutdownHooks();
   app.useGlobalPipes(

@@ -20,7 +20,7 @@ services:
           "--no-verbose",
           "--tries=1",
           "--spider",
-          "http://127.0.0.1:${PORT:-3000}/${API_PREFIX:-api}/${API_VERSION:-v1}",
+          "http://127.0.0.1:${PORT:-3000}/health/ready",
         ]
       interval: 10s
       timeout: 5s
