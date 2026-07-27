@@ -1,0 +1,14 @@
+if git diff --cached --name-only | grep -q '^package\.json$'; then
+  echo "package.json is staged — checking package-lock.json is in sync..."
+
+  npm install --package-lock-only > /dev/null 2>&1
+
+  if ! git diff --quiet -- package-lock.json; then
+    echo ""
+    echo "package-lock.json is out of sync with package.json."
+    echo "It has been regenerated on disk — review the changes, then:"
+    echo "  git add package-lock.json"
+    echo "and commit again."
+    exit 1
+  fi
+fi
