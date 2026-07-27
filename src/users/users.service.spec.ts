@@ -17,31 +17,31 @@ describe('UsersService', () => {
   describe('create', () => {
     it('creates a user with a generated id and timestamps', () => {
       const user = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
 
       expect(user.id).toEqual(expect.any(String));
-      expect(user.email).toBe('alex@example.com');
-      expect(user.displayName).toBe('Alex');
+      expect(user.email).toBe('jordan@example.com');
+      expect(user.displayName).toBe('Jordan');
       expect(user.createdAt).toBeInstanceOf(Date);
       expect(user.updatedAt).toBeInstanceOf(Date);
     });
 
     it('normalizes email by trimming and lowercasing', () => {
       const user = service.create({
-        email: '  Alex@Example.COM  ',
-        displayName: 'Alex',
+        email: '  Jordan@Example.COM  ',
+        displayName: 'Jordan',
       });
 
-      expect(user.email).toBe('alex@example.com');
+      expect(user.email).toBe('jordan@example.com');
     });
 
     it('rejects a duplicate email with ConflictException', () => {
-      service.create({ email: 'alex@example.com', displayName: 'Alex' });
+      service.create({ email: 'jordan@example.com', displayName: 'Jordan' });
 
       expect(() =>
-        service.create({ email: 'ALEX@example.com', displayName: 'Other' }),
+        service.create({ email: 'JORDAN@example.com', displayName: 'Other' }),
       ).toThrow(ConflictException);
     });
   });
@@ -58,8 +58,8 @@ describe('UsersService', () => {
   describe('findById', () => {
     it('returns the matching user', () => {
       const created = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
 
       expect(service.findById(created.id)).toEqual(created);
@@ -73,24 +73,28 @@ describe('UsersService', () => {
   describe('update', () => {
     it('updates the display name and preserves createdAt', () => {
       const created = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
 
-      const updated = service.update(created.id, { displayName: 'Alexson' });
+      const updated = service.update(created.id, {
+        displayName: 'Jordan Casey',
+      });
 
-      expect(updated.displayName).toBe('Alexson');
+      expect(updated.displayName).toBe('Jordan Casey');
       expect(updated.createdAt).toEqual(created.createdAt);
     });
 
     it('bumps updatedAt on change', () => {
       const created = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
       const originalUpdatedAt = created.updatedAt;
 
-      const updated = service.update(created.id, { displayName: 'Alexson' });
+      const updated = service.update(created.id, {
+        displayName: 'Jordan Casey',
+      });
 
       expect(updated.updatedAt.getTime()).toBeGreaterThanOrEqual(
         originalUpdatedAt.getTime(),
@@ -99,15 +103,15 @@ describe('UsersService', () => {
 
     it('normalizes email on update', () => {
       const created = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
 
       const updated = service.update(created.id, {
-        email: '  Alex2@Example.COM ',
+        email: '  Jordan2@Example.COM ',
       });
 
-      expect(updated.email).toBe('alex2@example.com');
+      expect(updated.email).toBe('jordan2@example.com');
     });
 
     it('throws NotFoundException for an unknown id', () => {
@@ -130,12 +134,12 @@ describe('UsersService', () => {
 
     it('allows updating a user to its own current email', () => {
       const created = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
 
       expect(() =>
-        service.update(created.id, { email: 'alex@example.com' }),
+        service.update(created.id, { email: 'jordan@example.com' }),
       ).not.toThrow();
     });
   });
@@ -143,8 +147,8 @@ describe('UsersService', () => {
   describe('remove', () => {
     it('deletes an existing user', () => {
       const created = service.create({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
 
       service.remove(created.id);

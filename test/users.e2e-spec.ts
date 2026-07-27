@@ -38,8 +38,8 @@ describe('UsersController (e2e)', () => {
 
   const createUser = (
     body: Record<string, unknown> = {
-      email: 'alex@example.com',
-      displayName: 'Alex',
+      email: 'jordan@example.com',
+      displayName: 'Jordan',
     },
   ) => request(app.getHttpServer()).post('/api/v1/users').send(body);
 
@@ -49,28 +49,29 @@ describe('UsersController (e2e)', () => {
 
       const body = response.body as UserResponseBody;
       expect(body).toMatchObject({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
       });
       expect(body.id).toEqual(expect.any(String));
     });
 
     it('rejects an invalid email', async () => {
-      await createUser({ email: 'not-an-email', displayName: 'Alex' }).expect(
+      await createUser({ email: 'not-an-email', displayName: 'Jordan' }).expect(
         400,
       );
     });
 
     it('rejects a display name shorter than 2 characters', async () => {
-      await createUser({ email: 'alex@example.com', displayName: 'A' }).expect(
-        400,
-      );
+      await createUser({
+        email: 'jordan@example.com',
+        displayName: 'A',
+      }).expect(400);
     });
 
     it('rejects unknown properties', async () => {
       await createUser({
-        email: 'alex@example.com',
-        displayName: 'Alex',
+        email: 'jordan@example.com',
+        displayName: 'Jordan',
         isAdmin: true,
       }).expect(400);
     });
@@ -79,7 +80,7 @@ describe('UsersController (e2e)', () => {
       await createUser().expect(201);
 
       await createUser({
-        email: 'ALEX@example.com',
+        email: 'JORDAN@example.com',
         displayName: 'Someone Else',
       }).expect(409);
     });
@@ -124,10 +125,12 @@ describe('UsersController (e2e)', () => {
 
       const response = await request(app.getHttpServer())
         .patch(`/api/v1/users/${createdBody.id}`)
-        .send({ displayName: 'Alexson' })
+        .send({ displayName: 'Jordan Casey' })
         .expect(200);
 
-      expect((response.body as UserResponseBody).displayName).toBe('Alexson');
+      expect((response.body as UserResponseBody).displayName).toBe(
+        'Jordan Casey',
+      );
     });
 
     it('returns 409 when updating to another user email', async () => {
@@ -149,7 +152,7 @@ describe('UsersController (e2e)', () => {
     it('returns 404 when the user does not exist', async () => {
       await request(app.getHttpServer())
         .patch('/api/v1/users/00000000-0000-0000-0000-000000000000')
-        .send({ displayName: 'Alexson' })
+        .send({ displayName: 'Jordan Casey' })
         .expect(404);
     });
   });
