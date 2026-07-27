@@ -7,6 +7,8 @@ services:
       dockerfile: Dockerfile
     environment:
       PORT: ${PORT:-3000}
+      API_PREFIX: ${API_PREFIX:-api}
+      API_VERSION: ${API_VERSION:-v1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -18,7 +20,7 @@ services:
           "--no-verbose",
           "--tries=1",
           "--spider",
-          "http://127.0.0.1:${PORT:-3000}/",
+          "http://127.0.0.1:${PORT:-3000}/${API_PREFIX:-api}/${API_VERSION:-v1}",
         ]
       interval: 10s
       timeout: 5s

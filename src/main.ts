@@ -1,8 +1,31 @@
 import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import { EnvironmentVariables } from './config/env.validation';
 
-async function bootstrap() {
+async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+  const configService = app.get(ConfigService<EnvironmentVariables, true>);
+
+  const apiPrefix = configService.get('API_PREFIX', { infer: true });
+  const apiVersion = configService.get('API_VERSION', { infer: true });
+  const port = configService.get('PORT', { infer: true });
+
+  app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`);
+  app.enableCors();
+  app.enableShutdownHooks();
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
+
+  await app.listen(port);
+
+  const url = await app.getUrl();
+  console.log(`Application is running on: ${url}`);
 }
-bootstrap();
+void bootstrap();
