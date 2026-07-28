@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
+import { PrismaService } from './../src/prisma/prisma.service';
 
 interface UserResponseBody {
   id: string;
@@ -14,6 +15,7 @@ interface UserResponseBody {
 
 describe('UsersController (e2e)', () => {
   let app: INestApplication<App>;
+  let prisma: PrismaService;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -30,6 +32,9 @@ describe('UsersController (e2e)', () => {
       }),
     );
     await app.init();
+
+    prisma = app.get(PrismaService);
+    await prisma.user.deleteMany();
   });
 
   afterEach(async () => {

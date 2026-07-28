@@ -1,47 +1,55 @@
-import { randomUUID } from 'node:crypto';
 import {
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma, User } from '../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User } from './types/user.type';
-import { UsersRepository } from './users.repository';
+
+const PRISMA_ERROR_UNIQUE_CONSTRAINT = 'P2002';
+const PRISMA_ERROR_RECORD_NOT_FOUND = 'P2025';
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+function isPrismaErrorCode(
+  error: unknown,
+  code: string,
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+  );
+}
+
 @Injectable()
 export class UsersService {
-  constructor(private readonly usersRepository: UsersRepository) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  create(dto: CreateUserDto): User {
-    const email = normalizeEmail(dto.email);
-
-    if (this.usersRepository.findByEmail(email)) {
-      throw new ConflictException('A user with this email already exists');
+  async create(dto: CreateUserDto): Promise<User> {
+    try {
+      return await this.prisma.user.create({
+        data: {
+          email: normalizeEmail(dto.email),
+          displayName: dto.displayName,
+        },
+      });
+    } catch (error) {
+      if (isPrismaErrorCode(error, PRISMA_ERROR_UNIQUE_CONSTRAINT)) {
+        throw new ConflictException('A user with this email already exists');
+      }
+      throw error;
     }
-
-    const now = new Date();
-    const user: User = {
-      id: randomUUID(),
-      email,
-      displayName: dto.displayName,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    return this.usersRepository.create(user);
   }
 
-  findAll(): User[] {
-    return this.usersRepository.findAll();
+  findAll(): Promise<User[]> {
+    return this.prisma.user.findMany();
   }
 
-  findById(id: string): User {
-    const user = this.usersRepository.findById(id);
+  async findById(id: string): Promise<User> {
+    const user = await this.prisma.user.findUnique({ where: { id } });
 
     if (!user) {
       throw new NotFoundException(`User with id "${id}" not found`);
@@ -50,30 +58,36 @@ export class UsersService {
     return user;
   }
 
-  update(id: string, dto: UpdateUserDto): User {
-    const existing = this.findById(id);
-
-    let email = existing.email;
+  async update(id: string, dto: UpdateUserDto): Promise<User> {
+    const data: Prisma.UserUpdateInput = {};
     if (dto.email !== undefined) {
-      email = normalizeEmail(dto.email);
-      const other = this.usersRepository.findByEmail(email);
-      if (other && other.id !== id) {
-        throw new ConflictException('A user with this email already exists');
-      }
+      data.email = normalizeEmail(dto.email);
+    }
+    if (dto.displayName !== undefined) {
+      data.displayName = dto.displayName;
     }
 
-    const updated: User = {
-      ...existing,
-      email,
-      displayName: dto.displayName ?? existing.displayName,
-      updatedAt: new Date(),
-    };
-
-    return this.usersRepository.update(id, updated) as User;
+    try {
+      return await this.prisma.user.update({ where: { id }, data });
+    } catch (error) {
+      if (isPrismaErrorCode(error, PRISMA_ERROR_RECORD_NOT_FOUND)) {
+        throw new NotFoundException(`User with id "${id}" not found`);
+      }
+      if (isPrismaErrorCode(error, PRISMA_ERROR_UNIQUE_CONSTRAINT)) {
+        throw new ConflictException('A user with this email already exists');
+      }
+      throw error;
+    }
   }
 
-  remove(id: string): void {
-    this.findById(id);
-    this.usersRepository.delete(id);
+  async remove(id: string): Promise<void> {
+    try {
+      await this.prisma.user.delete({ where: { id } });
+    } catch (error) {
+      if (isPrismaErrorCode(error, PRISMA_ERROR_RECORD_NOT_FOUND)) {
+        throw new NotFoundException(`User with id "${id}" not found`);
+      }
+      throw error;
+    }
   }
 }
