@@ -1,0 +1,79 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoutineStatus {
+  active
+  archived
+
+  @@map("routine_status")
+}
+
+model Task {
+  id            String   @id @default(uuid()) @db.Uuid
+  title         String   @db.VarChar
+  category      String?  @db.VarChar
+  difficulty    String?  @db.VarChar
+  referenceLink String?  @map("reference_link")
+  description   String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  routineTasks RoutineTask[]
+
+  @@map("tasks")
+}
+
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  displayName String?  @db.VarChar
+  email       String   @unique @db.VarChar
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  routines Routine[]
+
+  @@map("users")
+}
+
+model Routine {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @map("user_id") @db.Uuid
+  title     String        @db.VarChar
+  status    RoutineStatus @default(active)
+  notes     String?
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id])
+  routineTasks RoutineTask[]
+
+  @@map("routines")
+}
+
+model RoutineTask {
+  routineId             String   @map("routine_id") @db.Uuid
+  taskId                String   @map("task_id") @db.Uuid
+  position              Int
+  targetDurationMinutes Int?     @map("target_duration_minutes")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  routine Routine @relation(fields: [routineId], references: [id])
+  task    Task    @relation(fields: [taskId], references: [id])
+
+  @@id([routineId, taskId])
+  @@unique([routineId, position])
+  @@map("routine_tasks")
+}

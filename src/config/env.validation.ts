@@ -5,6 +5,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   API_PREFIX: z.string().min(1).default('api'),
   API_VERSION: z.string().min(1).default('v1'),
+  DATABASE_URL: z.url(),
 });
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;
