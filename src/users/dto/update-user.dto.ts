@@ -1,18 +1,4 @@
-import { Transform } from 'class-transformer';
-import { IsEmail, IsOptional, IsString, Length } from 'class-validator';
+import { PartialType } from '@nestjs/swagger';
+import { CreateUserDto } from './create-user.dto';
 
-const trim = ({ value }: { value: unknown }): unknown =>
-  typeof value === 'string' ? value.trim() : value;
-
-export class UpdateUserDto {
-  @IsOptional()
-  @Transform(trim)
-  @IsEmail()
-  email?: string;
-
-  @IsOptional()
-  @Transform(trim)
-  @IsString()
-  @Length(2, 100)
-  displayName?: string;
-}
+export class UpdateUserDto extends PartialType(CreateUserDto) {}
