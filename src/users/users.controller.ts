@@ -8,7 +8,7 @@ import {
   Param,
   Patch,
 } from '@nestjs/common';
-import { Session } from '@thallesp/nestjs-better-auth';
+import { Roles, Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { User } from '../generated/prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -24,16 +24,19 @@ export class UsersController {
   }
 
   @Get()
+  @Roles(['admin'])
   findAll(): Promise<User[]> {
     return this.usersService.findAll();
   }
 
   @Get(':id')
+  @Roles(['admin'])
   findOne(@Param('id') id: string): Promise<User> {
     return this.usersService.findById(id);
   }
 
   @Patch(':id')
+  @Roles(['admin'])
   update(
     @Param('id') id: string,
     @Body() updateUserDto: UpdateUserDto,
@@ -42,6 +45,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @Roles(['admin'])
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string): Promise<void> {
     return this.usersService.remove(id);

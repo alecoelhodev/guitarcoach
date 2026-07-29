@@ -52,13 +52,17 @@ model Task {
 }
 
 model User {
-  id            String   @id @default(uuid()) @db.Uuid
-  displayName   String?  @db.VarChar
-  email         String   @unique @db.VarChar
-  emailVerified Boolean  @default(false) @map("email_verified")
+  id            String    @id @default(uuid()) @db.Uuid
+  displayName   String?   @db.VarChar
+  email         String    @unique @db.VarChar
+  emailVerified Boolean   @default(false) @map("email_verified")
   image         String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  role          String    @default("user")
+  banned        Boolean   @default(false)
+  banReason     String?   @map("ban_reason")
+  banExpires    DateTime? @map("ban_expires")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   routines Routine[]
   sessions Session[]
@@ -68,14 +72,15 @@ model User {
 }
 
 model Session {
-  id        String   @id @default(uuid()) @db.Uuid
-  expiresAt DateTime @map("expires_at")
-  token     String   @unique
-  ipAddress String?  @map("ip_address")
-  userAgent String?  @map("user_agent")
-  userId    String   @map("user_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid()) @db.Uuid
+  expiresAt       DateTime @map("expires_at")
+  token           String   @unique
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  userId          String   @map("user_id") @db.Uuid
+  impersonatedBy  String?  @map("impersonated_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

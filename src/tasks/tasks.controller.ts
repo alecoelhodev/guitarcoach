@@ -10,6 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { Roles } from '@thallesp/nestjs-better-auth';
 import { Task } from '../generated/prisma/client';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { FindTasksQueryDto } from './dto/find-tasks-query.dto';
@@ -21,6 +22,7 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Post()
+  @Roles(['admin'])
   create(@Body() createTaskDto: CreateTaskDto): Promise<Task> {
     return this.tasksService.create(createTaskDto);
   }
@@ -36,6 +38,7 @@ export class TasksController {
   }
 
   @Patch(':id')
+  @Roles(['admin'])
   update(
     @Param('id') id: string,
     @Body() updateTaskDto: UpdateTaskDto,
@@ -44,6 +47,7 @@ export class TasksController {
   }
 
   @Delete(':id')
+  @Roles(['admin'])
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Param('id') id: string): Promise<void> {
     return this.tasksService.remove(id);

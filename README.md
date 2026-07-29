@@ -90,6 +90,15 @@ docker compose -f compose.yaml -f compose.dev.yaml up
 
 The API is available at `http://localhost:3000` (or `$PORT`), reloading on changes under `src/` and `test/`. Postgres is published on `$POSTGRES_PORT` (default `5432`).
 
+**After changing `prisma/schema.prisma`**, rebuild the `api` image before testing against it:
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml build api
+docker compose -f compose.yaml -f compose.dev.yaml up -d api
+```
+
+The container's startup command only runs `prisma migrate deploy` (applies migration SQL) — it never runs `prisma generate`, so a running container's Prisma Client is stuck with whatever shape the schema had at image build time. `src`/`test` file sync doesn't cover this either. Symptoms if you skip this: `PrismaClientValidationError: Unknown argument '<field>'` in `docker compose logs api`, or a DB value you just changed (e.g. a user's `role`) not seeming to take effect.
+
 For a production-shaped image instead:
 
 ```bash
@@ -171,6 +180,34 @@ curl -i -b cookies.txt http://localhost:3000/api/v1/users/me
 ```
 
 `sendVerificationEmail`/`sendResetPassword` (`src/auth/email.ts`) currently just `console.log` the link instead of sending a real email — check the server output for the verification link after signing up.
+
+### Roles & admin access
+
+Two roles: `user` (default for every new sign-up) and `admin`, enforced via the `@Roles(['admin'])` decorator from `@thallesp/nestjs-better-auth` on `UsersController`'s and `TasksController`'s mutating/listing routes. Backed by Better Auth's `admin` plugin (`src/auth/auth.ts`).
+
+`role` is a server-only field — it is **not** accepted in the `/auth/sign-up/email` body (or any other client-facing endpoint). Every new user gets `role: "user"` regardless of what you send.
+
+**Bootstrapping the first admin**: Better Auth's admin endpoints (`/auth/admin/set-role`, `/auth/admin/create-user`) always require an authenticated admin session when called over real HTTP — there's no way to promote the very first user through the API. Set it directly in the database once:
+
+```bash
+npx prisma studio   # opens http://localhost:5555
+```
+
+Open the `User` table and change that row's `role` to `admin`. (If you're on Docker Compose, remember the container's Prisma Client needs rebuilding after any schema change — see [Option A above](#option-a--docker-compose) — though editing existing data via Prisma Studio doesn't require that.)
+
+**Promoting/demoting a user once an admin exists** — reuse the cookie-jar pattern from above:
+
+```bash
+# Sign in as the admin
+curl -i -c cookies.txt -X POST http://localhost:3000/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"correct-horse-battery"}'
+
+# Promote another user to admin (or back to "user")
+curl -i -b cookies.txt -X POST http://localhost:3000/auth/admin/set-role \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":"<target-user-uuid>","role":"admin"}'
+```
 
 ## Architecture decisions
 

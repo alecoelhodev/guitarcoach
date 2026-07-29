@@ -5,6 +5,7 @@ import {
   HealthCheckService,
   MemoryHealthIndicator,
 } from '@nestjs/terminus';
+import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 
 const HEAP_THRESHOLD_BYTES = 300 * 1024 * 1024;
 const RSS_THRESHOLD_BYTES = 300 * 1024 * 1024;
@@ -19,12 +20,14 @@ export class HealthController {
   ) {}
 
   @Get('live')
+  @AllowAnonymous()
   @HealthCheck()
   liveness() {
     return this.health.check([]);
   }
 
   @Get('ready')
+  @AllowAnonymous()
   @HealthCheck()
   readiness() {
     return this.health.check([
