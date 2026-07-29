@@ -5,6 +5,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # START_COMMAND is set per-environment (compose.dev.yaml / compose.prod.yaml).
+    # Migrations must run before the app starts listening; `exec` replaces this
+    # shell with the app process so it keeps PID 1 and receives signals directly.
+    command: sh -c "./node_modules/.bin/prisma migrate deploy && exec $$START_COMMAND"
     environment:
       PORT: ${PORT:-3000}
       API_PREFIX: ${API_PREFIX:-api}
