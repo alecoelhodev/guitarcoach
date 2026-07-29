@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+    ports:
+      - "${PORT:-3000}:3000"
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /usr/src/app/src
+        - action: sync
+          path: ./test
+          target: /usr/src/app/test
+        - action: sync
+          path: ./nest-cli.json
+          target: /usr/src/app/nest-cli.json
+        - action: sync
+          path: ./tsconfig.json
+          target: /usr/src/app/tsconfig.json
+        - action: sync
+          path: ./tsconfig.build.json
+          target: /usr/src/app/tsconfig.build.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./package-lock.json
+
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
