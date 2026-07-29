@@ -16,6 +16,8 @@ function buildUser(overrides: Partial<User> = {}): User {
     id: 'a3f1c2d4-1111-4b2a-9c3d-000000000000',
     email: 'jordan@example.com',
     displayName: 'Jordan',
+    emailVerified: false,
+    image: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -24,7 +26,6 @@ function buildUser(overrides: Partial<User> = {}): User {
 
 type MockPrismaService = {
   user: {
-    create: jest.Mock;
     findMany: jest.Mock;
     findUnique: jest.Mock;
     update: jest.Mock;
@@ -39,7 +40,6 @@ describe('UsersService', () => {
   beforeEach(async () => {
     prisma = {
       user: {
-        create: jest.fn(),
         findMany: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -52,31 +52,6 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-  });
-
-  describe('create', () => {
-    it('creates a user via Prisma with a normalized email', async () => {
-      const created = buildUser();
-      prisma.user.create.mockResolvedValue(created);
-
-      const user = await service.create({
-        email: '  Jordan@Example.COM  ',
-        displayName: 'Jordan',
-      });
-
-      expect(prisma.user.create).toHaveBeenCalledWith({
-        data: { email: 'jordan@example.com', displayName: 'Jordan' },
-      });
-      expect(user).toEqual(created);
-    });
-
-    it('translates a unique constraint violation into ConflictException', async () => {
-      prisma.user.create.mockRejectedValue(prismaError('P2002'));
-
-      await expect(
-        service.create({ email: 'jordan@example.com', displayName: 'Jordan' }),
-      ).rejects.toThrow(ConflictException);
-    });
   });
 
   describe('findAll', () => {

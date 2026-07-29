@@ -6,7 +6,7 @@ import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   const configService = app.get(ConfigService<EnvironmentVariables, true>);
 
   const apiPrefix = configService.get('API_PREFIX', { infer: true });
@@ -17,6 +17,8 @@ async function bootstrap(): Promise<void> {
     exclude: [
       { path: 'health/live', method: RequestMethod.GET },
       { path: 'health/ready', method: RequestMethod.GET },
+      { path: 'auth', method: RequestMethod.ALL },
+      { path: 'auth/*path', method: RequestMethod.ALL },
     ],
   });
   app.enableCors();

@@ -7,10 +7,10 @@ import {
   HttpStatus,
   Param,
   Patch,
-  Post,
 } from '@nestjs/common';
+import { Session } from '@thallesp/nestjs-better-auth';
+import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { User } from '../generated/prisma/client';
-import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
@@ -18,9 +18,9 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post()
-  create(@Body() createUserDto: CreateUserDto): Promise<User> {
-    return this.usersService.create(createUserDto);
+  @Get('me')
+  me(@Session() session: UserSession): UserSession['user'] {
+    return session.user;
   }
 
   @Get()
