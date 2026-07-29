@@ -8,6 +8,7 @@ The project is a standard NestJS application (Express platform) organized by fea
 
 - **`config`** — loads and validates environment variables at startup using [Zod](https://zod.dev/) (`src/config/env.validation.ts`), exposed globally via `AppConfigModule`.
 - **`health`** — Kubernetes/Docker-style liveness and readiness probes via [`@nestjs/terminus`](https://docs.nestjs.com/recipes/terminus).
+- **`auth`** — email/password authentication via [Better Auth](https://www.better-auth.com/), mounted through [`@thallesp/nestjs-better-auth`](https://github.com/ThallesP/nestjs-better-auth) (see [Authentication](#authentication)).
 - **`users`** — CRUD user management backed by Postgres via Prisma (see [Architecture decisions](#architecture-decisions)).
 - **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination and filtering by `category`/`difficulty` (see [Data model](#data-model)).
 - **`prisma`** — `PrismaService`/`PrismaModule` wiring Prisma ORM to Postgres (see [Architecture decisions](#architecture-decisions)).
@@ -118,6 +119,8 @@ Validated in `src/config/env.validation.ts`; the app fails fast on startup if re
 | `API_VERSION` | no | `v1` | |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` | Compose only | — | Configure the `postgres` container in `compose.yaml` |
 | `DATABASE_URL` | yes | — | Postgres connection string read by Prisma (CLI and `PrismaService`). `compose.yaml` overrides it to point at the `postgres` service; `.env.example` has a `localhost` default for running the API outside Docker |
+| `BETTER_AUTH_SECRET` | yes | — | Encryption/signing secret for Better Auth, min 32 characters. Generate with `openssl rand -base64 32`; never reuse the placeholder in `.env.example` |
+| `BETTER_AUTH_URL` | yes | — | Base URL the API is served from (e.g. `http://localhost:3000`). Better Auth appends its own `/auth` base path |
 
 See `.env.example` for the full annotated list.
 
@@ -140,6 +143,35 @@ npx prisma studio        # browse the database
 
 A Husky `pre-commit` hook checks `package-lock.json` stays in sync whenever `package.json` is staged.
 
+## Authentication
+
+Auth is handled by [Better Auth](https://www.better-auth.com/) (email/password only for now), mounted at the bare `/auth` path — **not** under the `${API_PREFIX}/${API_VERSION}` prefix used by every other route, and not documented in the `/docs` Swagger UI (Better Auth's endpoints are raw Express middleware, not Nest controllers, so Swagger can't introspect them).
+
+A global `AuthGuard` protects every other route by default — requests without a valid session cookie get `401 Unauthorized`. Individual routes opt out with the `@AllowAnonymous()`/`@OptionalAuth()` decorators from `@thallesp/nestjs-better-auth`.
+
+```bash
+# Sign up (creates the User row + a session cookie)
+curl -i -c cookies.txt -X POST http://localhost:3000/auth/sign-up/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"jordan@example.com","password":"correct-horse-battery","name":"Jordan"}'
+
+# Sign in (existing user)
+curl -i -c cookies.txt -X POST http://localhost:3000/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"jordan@example.com","password":"correct-horse-battery"}'
+
+# Inspect the current session
+curl -i -b cookies.txt http://localhost:3000/auth/get-session
+
+# Sign out (revokes the session)
+curl -i -b cookies.txt -X POST http://localhost:3000/auth/sign-out
+
+# Call a protected route with the session cookie
+curl -i -b cookies.txt http://localhost:3000/api/v1/users/me
+```
+
+`sendVerificationEmail`/`sendResetPassword` (`src/auth/email.ts`) currently just `console.log` the link instead of sending a real email — check the server output for the verification link after signing up.
+
 ## Architecture decisions
 
 - **Config validation with Zod, not `class-validator`.** Environment variables are parsed once at boot through a Zod schema (`env.validation.ts`) rather than Nest's usual `class-validator`-based config approach, so invalid/missing env vars crash startup immediately with a clear message instead of surfacing as runtime errors deep in a request.
@@ -149,10 +181,12 @@ A Husky `pre-commit` hook checks `package-lock.json` stays in sync whenever `pac
 - **Prisma ORM wired to Postgres.** `PrismaModule`/`PrismaService` (`src/prisma/`) wire Prisma Client into Nest as a global provider, using the `@prisma/adapter-pg` driver adapter over `pg` per Prisma 7's required driver-adapter workflow. `PrismaService` doesn't eagerly connect in `onModuleInit` — Prisma Client connects lazily on first query, so the app can boot without a reachable Postgres until a module actually queries the database. The generated client is emitted to `src/generated/prisma` (gitignored, regenerate with `prisma generate`) with `moduleFormat = "cjs"`, since this project is CommonJS and the default ESM output breaks under `ts-jest`. See [Data model](#data-model) for the full schema.
 - **Multi-stage Dockerfile, dev vs. prod targets.** The Dockerfile separates a `development` target (full `node_modules`, `start:dev`, source bind-mounted via Compose `watch`) from a `production` target (prod-only dependencies, compiled `dist/` only, runs as the non-root `node` user). `compose.dev.yaml` / `compose.prod.yaml` are overlays selecting the target rather than separate Dockerfiles, keeping build logic in one place.
 - **Global validation pipe with `whitelist` + `forbidNonWhitelisted`.** Incoming request bodies are stripped of unknown properties and reject requests containing them, so DTOs (e.g. `CreateUserDto`) are the sole contract for what the API accepts.
-- **Swagger mounted unauthenticated at `/docs`.** Acceptable while there is no auth layer or sensitive data; revisit (gate behind auth, or disable in production) once the API handles real user data or once an authentication module exists.
+- **Swagger mounted unauthenticated at `/docs`.** Unaffected by the global `AuthGuard` (Swagger, like Better Auth's own routes, is mounted directly on the underlying HTTP adapter rather than as a Nest controller). Acceptable for now since it only exposes route/DTO shapes, not data; revisit (gate behind auth, or disable in production) once that's no longer true.
+- **Auth endpoints documented in the README, not Swagger.** `@nestjs/swagger` only introspects Nest controllers; Better Auth's endpoints are raw Express middleware, so they don't appear in the generated OpenAPI document. See [Authentication](#authentication) for example requests instead.
 
 ## Resources
 
 - [NestJS Documentation](https://docs.nestjs.com)
 - [Terminus health checks](https://docs.nestjs.com/recipes/terminus)
 - [Zod](https://zod.dev/)
+- [Better Auth](https://www.better-auth.com/docs)
