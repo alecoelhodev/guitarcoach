@@ -20,15 +20,31 @@ enum RoutineStatus {
   @@map("routine_status")
 }
 
+enum TaskCategory {
+  technique
+  theory
+  repertoire
+
+  @@map("task_category")
+}
+
+enum TaskDifficulty {
+  easy
+  medium
+  hard
+
+  @@map("task_difficulty")
+}
+
 model Task {
-  id            String   @id @default(uuid()) @db.Uuid
-  title         String   @db.VarChar
-  category      String?  @db.VarChar
-  difficulty    String?  @db.VarChar
-  referenceLink String?  @map("reference_link")
+  id            String          @id @default(uuid()) @db.Uuid
+  title         String          @db.VarChar
+  category      TaskCategory?
+  difficulty    TaskDifficulty?
+  referenceLink String?         @map("reference_link")
   description   String?
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
 
   routineTasks RoutineTask[]
 
