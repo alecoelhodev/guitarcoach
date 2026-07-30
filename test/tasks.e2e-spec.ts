@@ -1,9 +1,8 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
-import request from 'supertest';
+import { INestApplication } from '@nestjs/common';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
+import { buildTestApp } from './support/build-test-app';
+import { requestAs } from './support/request-as';
 
 interface TaskResponseBody {
   id: string;
@@ -26,20 +25,7 @@ describe('TasksController (e2e)', () => {
   let prisma: PrismaService;
 
   beforeEach(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-    await app.init();
+    app = await buildTestApp();
 
     prisma = app.get(PrismaService);
     await prisma.routineTask.deleteMany();
@@ -50,13 +36,20 @@ describe('TasksController (e2e)', () => {
     await app.close();
   });
 
+  // create/update/remove are admin-only per @Roles(['admin']) on
+  // TasksController; RBAC enforcement itself is covered by
+  // test/rbac.e2e-spec.ts, so these requests always authenticate as admin
+  // to exercise CRUD behavior. Reads only require authentication, but admin
+  // works there too.
+  const admin = () => requestAs(app, 'admin');
+
   const createTask = (
     body: Record<string, unknown> = {
       title: 'Chromatic warm-up',
       category: 'technique',
       difficulty: 'easy',
     },
-  ) => request(app.getHttpServer()).post('/api/v1/tasks').send(body);
+  ) => admin().post('/api/v1/tasks').send(body);
 
   describe('POST /api/v1/tasks', () => {
     it('creates a task', async () => {
@@ -116,9 +109,7 @@ describe('TasksController (e2e)', () => {
         difficulty: 'hard',
       }).expect(201);
 
-      const response = await request(app.getHttpServer())
-        .get('/api/v1/tasks')
-        .expect(200);
+      const response = await admin().get('/api/v1/tasks').expect(200);
 
       const body = response.body as PaginatedTasksResponseBody;
       expect(body.data).toHaveLength(2);
@@ -142,7 +133,7 @@ describe('TasksController (e2e)', () => {
         difficulty: 'hard',
       }).expect(201);
 
-      const response = await request(app.getHttpServer())
+      const response = await admin()
         .get('/api/v1/tasks?category=theory')
         .expect(200);
 
@@ -163,7 +154,7 @@ describe('TasksController (e2e)', () => {
         difficulty: 'hard',
       }).expect(201);
 
-      const response = await request(app.getHttpServer())
+      const response = await admin()
         .get('/api/v1/tasks?difficulty=hard')
         .expect(200);
 
@@ -181,7 +172,7 @@ describe('TasksController (e2e)', () => {
         }).expect(201);
       }
 
-      const response = await request(app.getHttpServer())
+      const response = await admin()
         .get('/api/v1/tasks?page=1&limit=2')
         .expect(200);
 
@@ -201,7 +192,7 @@ describe('TasksController (e2e)', () => {
       const created = await createTask().expect(201);
       const createdBody = created.body as TaskResponseBody;
 
-      const response = await request(app.getHttpServer())
+      const response = await admin()
         .get(`/api/v1/tasks/${createdBody.id}`)
         .expect(200);
 
@@ -209,7 +200,7 @@ describe('TasksController (e2e)', () => {
     });
 
     it('returns 404 when the task does not exist', async () => {
-      await request(app.getHttpServer())
+      await admin()
         .get('/api/v1/tasks/00000000-0000-0000-0000-000000000000')
         .expect(404);
     });
@@ -220,7 +211,7 @@ describe('TasksController (e2e)', () => {
       const created = await createTask().expect(201);
       const createdBody = created.body as TaskResponseBody;
 
-      const response = await request(app.getHttpServer())
+      const response = await admin()
         .patch(`/api/v1/tasks/${createdBody.id}`)
         .send({ difficulty: 'medium' })
         .expect(200);
@@ -229,7 +220,7 @@ describe('TasksController (e2e)', () => {
     });
 
     it('returns 404 when the task does not exist', async () => {
-      await request(app.getHttpServer())
+      await admin()
         .patch('/api/v1/tasks/00000000-0000-0000-0000-000000000000')
         .send({ difficulty: 'medium' })
         .expect(404);
@@ -241,17 +232,13 @@ describe('TasksController (e2e)', () => {
       const created = await createTask().expect(201);
       const createdBody = created.body as TaskResponseBody;
 
-      await request(app.getHttpServer())
-        .delete(`/api/v1/tasks/${createdBody.id}`)
-        .expect(204);
+      await admin().delete(`/api/v1/tasks/${createdBody.id}`).expect(204);
 
-      await request(app.getHttpServer())
-        .get(`/api/v1/tasks/${createdBody.id}`)
-        .expect(404);
+      await admin().get(`/api/v1/tasks/${createdBody.id}`).expect(404);
     });
 
     it('returns 404 when the task does not exist', async () => {
-      await request(app.getHttpServer())
+      await admin()
         .delete('/api/v1/tasks/00000000-0000-0000-0000-000000000000')
         .expect(404);
     });

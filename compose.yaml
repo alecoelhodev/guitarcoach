@@ -5,11 +5,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # START_COMMAND is set per-environment (compose.dev.yaml / compose.prod.yaml).
+    # Migrations must run before the app starts listening; `exec` replaces this
+    # shell with the app process so it keeps PID 1 and receives signals directly.
+    command: sh -c "./node_modules/.bin/prisma migrate deploy && exec $$START_COMMAND"
     environment:
       PORT: ${PORT:-3000}
       API_PREFIX: ${API_PREFIX:-api}
       API_VERSION: ${API_VERSION:-v1}
       DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-guitar_coach}?schema=public
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
     depends_on:
       postgres:
         condition: service_healthy

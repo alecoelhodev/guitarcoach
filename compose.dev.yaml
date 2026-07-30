@@ -4,6 +4,7 @@ services:
       target: development
     environment:
       NODE_ENV: development
+      START_COMMAND: npm run start:dev
     ports:
       - "${PORT:-3000}:3000"
     develop:
