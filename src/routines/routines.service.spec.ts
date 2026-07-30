@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma, Routine, RoutineTask } from '../generated/prisma/client';
+import { Prisma, Routine, RoutineTask, Task } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoutinesService } from './routines.service';
 
@@ -38,6 +38,20 @@ function buildRoutineTask(overrides: Partial<RoutineTask> = {}): RoutineTask {
     taskId: TASK_ID,
     position: 1,
     targetDurationMinutes: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
+function buildTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: TASK_ID,
+    title: 'Chromatic finger warm-up',
+    category: 'technique',
+    difficulty: 'easy',
+    referenceLink: null,
+    description: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -244,6 +258,42 @@ describe('RoutinesService', () => {
       await expect(service.remove(USER_ID, 'referenced-id')).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('findTasks', () => {
+    it('returns the routine tasks with nested task data, ordered by position', async () => {
+      const routineTasks = [
+        { ...buildRoutineTask({ position: 1 }), task: buildTask() },
+      ];
+      prisma.routineTask.findMany.mockResolvedValue(routineTasks);
+
+      const result = await service.findTasks(USER_ID, ROUTINE_ID);
+
+      expect(prisma.routine.findFirst).toHaveBeenCalledWith({
+        where: { id: ROUTINE_ID, userId: USER_ID },
+      });
+      expect(prisma.routineTask.findMany).toHaveBeenCalledWith({
+        where: { routineId: ROUTINE_ID },
+        orderBy: { position: 'asc' },
+        include: { task: true },
+      });
+      expect(result).toEqual(routineTasks);
+    });
+
+    it('returns an empty array when the routine has no tasks', async () => {
+      prisma.routineTask.findMany.mockResolvedValue([]);
+
+      await expect(service.findTasks(USER_ID, ROUTINE_ID)).resolves.toEqual([]);
+    });
+
+    it('throws NotFoundException when the routine is not owned by the user', async () => {
+      prisma.routine.findFirst.mockResolvedValue(null);
+
+      await expect(service.findTasks(USER_ID, ROUTINE_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.routineTask.findMany).not.toHaveBeenCalled();
     });
   });
 

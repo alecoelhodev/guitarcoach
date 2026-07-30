@@ -30,6 +30,10 @@ export interface PaginatedResult<T> {
   };
 }
 
+export type RoutineTaskWithTask = Prisma.RoutineTaskGetPayload<{
+  include: { task: true };
+}>;
+
 function isPrismaErrorCode(
   error: unknown,
   code: string,
@@ -125,6 +129,19 @@ export class RoutinesService {
       }
       throw error;
     }
+  }
+
+  async findTasks(
+    userId: string,
+    routineId: string,
+  ): Promise<RoutineTaskWithTask[]> {
+    await this.findById(userId, routineId);
+
+    return this.prisma.routineTask.findMany({
+      where: { routineId },
+      orderBy: { position: 'asc' },
+      include: { task: true },
+    });
   }
 
   async addTask(

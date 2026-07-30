@@ -6,6 +6,7 @@ export const envSchema = z.object({
   API_PREFIX: z.string().min(1).default('api'),
   API_VERSION: z.string().min(1).default('v1'),
   DATABASE_URL: z.url(),
+  TEST_DATABASE_URL: z.url().optional(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
 });

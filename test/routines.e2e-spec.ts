@@ -28,6 +28,19 @@ interface RoutineTaskResponseBody {
   updatedAt: string;
 }
 
+interface RoutineTaskWithTaskResponseBody extends RoutineTaskResponseBody {
+  task: {
+    id: string;
+    title: string;
+    category: string | null;
+    difficulty: string | null;
+    referenceLink: string | null;
+    description: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
 describe('RoutinesController (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -429,6 +442,78 @@ describe('RoutinesController (e2e)', () => {
         .post(`/api/v1/routines/${routine.id}/tasks`)
         .send({ taskId: taskB.id, position: 1 })
         .expect(409);
+    });
+  });
+
+  describe('GET /api/v1/routines/:routineId/tasks', () => {
+    it('returns the routine tasks with nested task data, ordered by position', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskB.id, position: 1 })
+        .expect(201);
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskA.id, position: 2 })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/routines/${routine.id}/tasks`)
+        .expect(200);
+
+      const body = response.body as RoutineTaskWithTaskResponseBody[];
+      expect(body.map((rt) => rt.taskId)).toEqual([taskB.id, taskA.id]);
+      expect(body.map((rt) => rt.position)).toEqual([1, 2]);
+      expect(body[0].task).toMatchObject({ id: taskB.id, title: 'Task B' });
+      expect(body[1].task).toMatchObject({ id: taskA.id, title: 'Task A' });
+    });
+
+    it('returns an empty array when the routine has no tasks', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/routines/${routine.id}/tasks`)
+        .expect(200);
+
+      expect(response.body).toEqual([]);
+    });
+
+    it('rejects an unauthenticated request', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+
+      await requestAs(app)
+        .get(`/api/v1/routines/${routine.id}/tasks`)
+        .expect(401);
+    });
+
+    it('returns 404 when the routine does not exist', async () => {
+      const user = await seedUser();
+
+      await asUser(user.id)
+        .get('/api/v1/routines/00000000-0000-0000-0000-000000000000/tasks')
+        .expect(404);
+    });
+
+    it("returns 404 for another user's routine", async () => {
+      const owner = await seedUser({ email: 'owner@example.com' });
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const routine = (await createRoutine(owner.id).expect(201))
+        .body as RoutineResponseBody;
+
+      await asUser(other.id)
+        .get(`/api/v1/routines/${routine.id}/tasks`)
+        .expect(404);
     });
   });
 

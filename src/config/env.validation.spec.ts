@@ -111,6 +111,33 @@ describe('validate', () => {
     expect(typeof result.PORT).toBe('number');
   });
 
+  it('accepts a valid TEST_DATABASE_URL', () => {
+    const TEST_DATABASE_URL =
+      'postgresql://user:pass@localhost:5432/db_test?schema=public';
+
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      TEST_DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+    });
+
+    expect(result.TEST_DATABASE_URL).toBe(TEST_DATABASE_URL);
+  });
+
+  it('fails when TEST_DATABASE_URL is not a valid URL', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'test',
+        DATABASE_URL,
+        TEST_DATABASE_URL: 'not-a-url',
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
   it('applies defaults for PORT, API_PREFIX, and API_VERSION when omitted', () => {
     const result = validate({
       NODE_ENV: 'test',
