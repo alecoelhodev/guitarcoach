@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, Routine, RoutineTask } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisLockService } from '../redis/redis-lock.service';
 import { AddRoutineTaskDto } from './dto/add-routine-task.dto';
 import { CreateRoutineDto } from './dto/create-routine.dto';
 import { FindRoutinesQueryDto } from './dto/find-routines-query.dto';
@@ -19,6 +20,11 @@ const PRISMA_ERROR_UNIQUE_CONSTRAINT = 'P2002';
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
+
+// Covers the two-phase reorder transaction with margin; if a holder crashes
+// mid-transaction the lock still self-clears via this TTL instead of
+// blocking the routine's reorder endpoint forever.
+const REORDER_LOCK_TTL_MS = 5000;
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -49,7 +55,10 @@ function notFound(id: string): NotFoundException {
 
 @Injectable()
 export class RoutinesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redisLock: RedisLockService,
+  ) {}
 
   create(userId: string, dto: CreateRoutineDto): Promise<Routine> {
     return this.prisma.routine.create({ data: { ...dto, userId } });
@@ -239,44 +248,69 @@ export class RoutinesService {
   ): Promise<RoutineTask[]> {
     await this.findById(userId, routineId);
 
-    const existing = await this.prisma.routineTask.findMany({
-      where: { routineId },
-    });
-    const existingIds = new Set(existing.map((rt) => rt.taskId));
-    const requestedIds = new Set(dto.taskIds);
-    const isSameSet =
-      dto.taskIds.length === existing.length &&
-      requestedIds.size === dto.taskIds.length &&
-      dto.taskIds.every((id) => existingIds.has(id));
+    // Two concurrent reorders for the same routine can both pass validation
+    // against the pre-reorder state and then interleave their writes,
+    // corrupting `position` ordering. Serialize per-routine with a Redis
+    // lock so only one reorder is in flight at a time; a second concurrent
+    // request fails fast with 409 rather than queuing.
+    const lockKey = this.reorderLockKey(routineId);
+    const lockToken = await this.redisLock.acquire(
+      lockKey,
+      REORDER_LOCK_TTL_MS,
+    );
 
-    if (!isSameSet) {
-      throw new BadRequestException(
-        'taskIds must include every task currently assigned to this routine exactly once',
+    if (!lockToken) {
+      throw new ConflictException(
+        'Another reorder is already in progress for this routine',
       );
     }
 
-    // Postgres checks the unique(routineId, position) constraint per-statement
-    // (not deferred), so writing final positions directly would conflict with
-    // whatever task currently holds that slot. Move everything to negative
-    // placeholder positions first, then to their final positions.
-    await this.prisma.$transaction([
-      ...dto.taskIds.map((taskId, index) =>
-        this.prisma.routineTask.update({
-          where: { routineId_taskId: { routineId, taskId } },
-          data: { position: -(index + 1) },
-        }),
-      ),
-      ...dto.taskIds.map((taskId, index) =>
-        this.prisma.routineTask.update({
-          where: { routineId_taskId: { routineId, taskId } },
-          data: { position: index + 1 },
-        }),
-      ),
-    ]);
+    try {
+      const existing = await this.prisma.routineTask.findMany({
+        where: { routineId },
+      });
+      const existingIds = new Set(existing.map((rt) => rt.taskId));
+      const requestedIds = new Set(dto.taskIds);
+      const isSameSet =
+        dto.taskIds.length === existing.length &&
+        requestedIds.size === dto.taskIds.length &&
+        dto.taskIds.every((id) => existingIds.has(id));
 
-    return this.prisma.routineTask.findMany({
-      where: { routineId },
-      orderBy: { position: 'asc' },
-    });
+      if (!isSameSet) {
+        throw new BadRequestException(
+          'taskIds must include every task currently assigned to this routine exactly once',
+        );
+      }
+
+      // Postgres checks the unique(routineId, position) constraint per-statement
+      // (not deferred), so writing final positions directly would conflict with
+      // whatever task currently holds that slot. Move everything to negative
+      // placeholder positions first, then to their final positions.
+      await this.prisma.$transaction([
+        ...dto.taskIds.map((taskId, index) =>
+          this.prisma.routineTask.update({
+            where: { routineId_taskId: { routineId, taskId } },
+            data: { position: -(index + 1) },
+          }),
+        ),
+        ...dto.taskIds.map((taskId, index) =>
+          this.prisma.routineTask.update({
+            where: { routineId_taskId: { routineId, taskId } },
+            data: { position: index + 1 },
+          }),
+        ),
+      ]);
+
+      return await this.prisma.routineTask.findMany({
+        where: { routineId },
+        orderBy: { position: 'asc' },
+      });
+    } finally {
+      await this.redisLock.release(lockKey, lockToken);
+    }
+  }
+
+  private reorderLockKey(routineId: string): string {
+    return `lock:routine:${routineId}:reorder`;
   }
 }

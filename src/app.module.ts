@@ -13,6 +13,7 @@ import { EnvironmentVariables } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
+import { RedisLockModule } from './redis/redis-lock.module';
 import { RoutinesModule } from './routines/routines.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module';
     AppConfigModule,
     PrismaModule,
     RedisRateLimitStorageModule,
+    RedisLockModule,
     CacheModule.registerAsync({
       isGlobal: true,
       inject: [ConfigService],
