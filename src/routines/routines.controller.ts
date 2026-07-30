@@ -12,10 +12,13 @@ import {
 } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
-import { Routine } from '../generated/prisma/client';
+import { Routine, RoutineTask } from '../generated/prisma/client';
+import { AddRoutineTaskDto } from './dto/add-routine-task.dto';
 import { CreateRoutineDto } from './dto/create-routine.dto';
 import { FindRoutinesQueryDto } from './dto/find-routines-query.dto';
+import { ReorderRoutineTasksDto } from './dto/reorder-routine-tasks.dto';
 import { UpdateRoutineDto } from './dto/update-routine.dto';
+import { UpdateRoutineTaskDto } from './dto/update-routine-task.dto';
 import { PaginatedResult, RoutinesService } from './routines.service';
 
 @Controller('routines')
@@ -62,5 +65,56 @@ export class RoutinesController {
     @Param('id') id: string,
   ): Promise<void> {
     return this.routinesService.remove(session.user.id, id);
+  }
+
+  @Post(':routineId/tasks')
+  addTask(
+    @Session() session: UserSession,
+    @Param('routineId') routineId: string,
+    @Body() addRoutineTaskDto: AddRoutineTaskDto,
+  ): Promise<RoutineTask> {
+    return this.routinesService.addTask(
+      session.user.id,
+      routineId,
+      addRoutineTaskDto,
+    );
+  }
+
+  @Patch(':routineId/tasks/reorder')
+  reorderTasks(
+    @Session() session: UserSession,
+    @Param('routineId') routineId: string,
+    @Body() reorderRoutineTasksDto: ReorderRoutineTasksDto,
+  ): Promise<RoutineTask[]> {
+    return this.routinesService.reorderTasks(
+      session.user.id,
+      routineId,
+      reorderRoutineTasksDto,
+    );
+  }
+
+  @Patch(':routineId/tasks/:taskId')
+  updateTask(
+    @Session() session: UserSession,
+    @Param('routineId') routineId: string,
+    @Param('taskId') taskId: string,
+    @Body() updateRoutineTaskDto: UpdateRoutineTaskDto,
+  ): Promise<RoutineTask> {
+    return this.routinesService.updateTask(
+      session.user.id,
+      routineId,
+      taskId,
+      updateRoutineTaskDto,
+    );
+  }
+
+  @Delete(':routineId/tasks/:taskId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  removeTask(
+    @Session() session: UserSession,
+    @Param('routineId') routineId: string,
+    @Param('taskId') taskId: string,
+  ): Promise<void> {
+    return this.routinesService.removeTask(session.user.id, routineId, taskId);
   }
 }

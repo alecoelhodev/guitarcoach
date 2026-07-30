@@ -19,6 +19,15 @@ interface PaginatedRoutinesResponseBody {
   meta: { total: number; page: number; limit: number; totalPages: number };
 }
 
+interface RoutineTaskResponseBody {
+  routineId: string;
+  taskId: string;
+  position: number;
+  targetDurationMinutes: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 describe('RoutinesController (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
@@ -54,6 +63,9 @@ describe('RoutinesController (e2e)', () => {
     userId: string,
     body: Record<string, unknown> = { title: 'Daily warm-up' },
   ) => asUser(userId).post('/api/v1/routines').send(body);
+
+  const seedTask = (title = 'Chromatic warm-up') =>
+    prisma.task.create({ data: { title } });
 
   describe('POST /api/v1/routines', () => {
     it('creates a routine owned by the authenticated user', async () => {
@@ -318,6 +330,305 @@ describe('RoutinesController (e2e)', () => {
       await asUser(user.id)
         .delete(`/api/v1/routines/${createdBody.id}`)
         .expect(409);
+    });
+  });
+
+  describe('POST /api/v1/routines/:routineId/tasks', () => {
+    it('adds a task to the routine, appending at the next position', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskA.id })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskB.id, targetDurationMinutes: 10 })
+        .expect(201);
+
+      const body = response.body as RoutineTaskResponseBody;
+      expect(body).toMatchObject({
+        routineId: routine.id,
+        taskId: taskB.id,
+        position: 2,
+        targetDurationMinutes: 10,
+      });
+    });
+
+    it('rejects an unauthenticated request', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+
+      await requestAs(app)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(401);
+    });
+
+    it("returns 404 for another user's routine", async () => {
+      const owner = await seedUser({ email: 'owner@example.com' });
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const routine = (await createRoutine(owner.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+
+      await asUser(other.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(404);
+    });
+
+    it('returns 404 when the task does not exist', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: '00000000-0000-0000-0000-000000000000' })
+        .expect(404);
+    });
+
+    it('returns 409 when the task is already assigned to the routine', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(409);
+    });
+
+    it('returns 409 when the position is already taken', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskA.id, position: 1 })
+        .expect(201);
+
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskB.id, position: 1 })
+        .expect(409);
+    });
+  });
+
+  describe('PATCH /api/v1/routines/:routineId/tasks/:taskId', () => {
+    it('updates the task assignment', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({ targetDurationMinutes: 20 })
+        .expect(200);
+
+      expect(
+        (response.body as RoutineTaskResponseBody).targetDurationMinutes,
+      ).toBe(20);
+    });
+
+    it("returns 404 for another user's routine", async () => {
+      const owner = await seedUser({ email: 'owner@example.com' });
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const routine = (await createRoutine(owner.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(owner.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      await asUser(other.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({ targetDurationMinutes: 20 })
+        .expect(404);
+    });
+
+    it('returns 404 when the task is not assigned to the routine', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+
+      await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({ targetDurationMinutes: 20 })
+        .expect(404);
+    });
+
+    it('returns 409 when the new position is already taken', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskA.id, position: 1 })
+        .expect(201);
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskB.id, position: 2 })
+        .expect(201);
+
+      await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${taskB.id}`)
+        .send({ position: 1 })
+        .expect(409);
+    });
+  });
+
+  describe('DELETE /api/v1/routines/:routineId/tasks/:taskId', () => {
+    it('removes the task from the routine', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      await asUser(user.id)
+        .delete(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .expect(204);
+
+      await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({ targetDurationMinutes: 5 })
+        .expect(404);
+    });
+
+    it("returns 404 for another user's routine", async () => {
+      const owner = await seedUser({ email: 'owner@example.com' });
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const routine = (await createRoutine(owner.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(owner.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      await asUser(other.id)
+        .delete(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .expect(404);
+    });
+
+    it('returns 404 when the task is not assigned to the routine', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+
+      await asUser(user.id)
+        .delete(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .expect(404);
+    });
+  });
+
+  describe('PATCH /api/v1/routines/:routineId/tasks/reorder', () => {
+    it('reorders the routine tasks', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+      const taskC = await seedTask('Task C');
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskA.id })
+        .expect(201);
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskB.id })
+        .expect(201);
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskC.id })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/reorder`)
+        .send({ taskIds: [taskC.id, taskA.id, taskB.id] })
+        .expect(200);
+
+      const body = response.body as RoutineTaskResponseBody[];
+      expect(body.map((rt) => rt.taskId)).toEqual([
+        taskC.id,
+        taskA.id,
+        taskB.id,
+      ]);
+      expect(body.map((rt) => rt.position)).toEqual([1, 2, 3]);
+    });
+
+    it("returns 404 for another user's routine", async () => {
+      const owner = await seedUser({ email: 'owner@example.com' });
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const routine = (await createRoutine(owner.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(owner.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      await asUser(other.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/reorder`)
+        .send({ taskIds: [task.id] })
+        .expect(404);
+    });
+
+    it('returns 400 when the taskIds do not match the routine current tasks', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: taskA.id })
+        .expect(201);
+
+      await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/reorder`)
+        .send({ taskIds: [taskA.id, taskB.id] })
+        .expect(400);
     });
   });
 });

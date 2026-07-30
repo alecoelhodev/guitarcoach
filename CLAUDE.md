@@ -47,3 +47,32 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 - Unit tests (`*.spec.ts`) live alongside the code they test in `src/`; Jest's `rootDir` is `src`. E2E tests (`*.e2e-spec.ts`) live in `test/` with their own Jest config (`test/jest-e2e.json`).
 - ESLint uses flat config (`eslint.config.mjs`) with `typescript-eslint` recommendedTypeChecked + `eslint-plugin-prettier`. Notable rule overrides: `no-explicit-any` off, `no-floating-promises` and `no-unsafe-argument` are `warn` not `error`.
 - TypeScript config targets ES2023, uses `nodenext` module resolution, and has `noImplicitAny: false` with `strictNullChecks: true` (not full `strict` mode).
+
+# Repository Working Instructions
+
+Before making changes:
+
+* Inspect the repository structure and relevant existing implementation.
+* Review at least one similar feature before creating a new pattern.
+* Check the Prisma schema and reuse the existing `PrismaService`.
+* Follow existing conventions for folders, naming, modules, controllers, services, DTOs, validation, error handling, and tests.
+
+While implementing:
+
+* Prefer existing utilities, abstractions, and dependencies.
+* Do not introduce a new library unless the current stack cannot reasonably support the requirement.
+* Keep controllers thin and place business logic in the appropriate service or existing application layer.
+* Do not modify the Prisma schema unless the task requires it.
+* Avoid unrelated refactoring.
+
+Before completing the task:
+
+* Run the repository’s relevant formatting, linting, type-checking, unit-test, and E2E-test commands.
+* Do not claim a command passed unless it was actually executed successfully.
+* Summarize:
+
+  * Files created or modified
+  * Important implementation decisions
+  * Commands executed and their results
+  * Assumptions, limitations, or unresolved issues
+
