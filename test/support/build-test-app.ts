@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { App } from 'supertest/types';
 import { AppConfigModule } from '../../src/config/app-config.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
+import { RoutinesModule } from '../../src/routines/routines.module';
 import { TasksModule } from '../../src/tasks/tasks.module';
 import { UsersModule } from '../../src/users/users.module';
 import { FakeAuthGuard } from './fake-auth.guard';
@@ -17,7 +18,13 @@ import { FakeAuthGuard } from './fake-auth.guard';
  */
 export async function buildTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
-    imports: [AppConfigModule, PrismaModule, UsersModule, TasksModule],
+    imports: [
+      AppConfigModule,
+      PrismaModule,
+      UsersModule,
+      TasksModule,
+      RoutinesModule,
+    ],
     providers: [{ provide: APP_GUARD, useClass: FakeAuthGuard }],
   }).compile();
 

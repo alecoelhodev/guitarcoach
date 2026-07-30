@@ -9,6 +9,8 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 
 export const TEST_ROLE_HEADER = 'x-test-role';
+export const TEST_USER_ID_HEADER = 'x-test-user-id';
+const DEFAULT_TEST_USER_ID = 'test-user-id';
 
 /**
  * Test double for @thallesp/nestjs-better-auth's global AuthGuard. Replaces
@@ -26,6 +28,9 @@ export class FakeAuthGuard implements CanActivate {
       .switchToHttp()
       .getRequest<Request & { session?: unknown; user?: unknown }>();
     const role = request.headers[TEST_ROLE_HEADER] as string | undefined;
+    const userId =
+      (request.headers[TEST_USER_ID_HEADER] as string | undefined) ??
+      DEFAULT_TEST_USER_ID;
 
     const isPublic = this.reflector.getAllAndOverride<boolean>('PUBLIC', [
       context.getHandler(),
@@ -42,7 +47,7 @@ export class FakeAuthGuard implements CanActivate {
       throw new UnauthorizedException();
     }
 
-    const user = { id: 'test-user-id', role };
+    const user = { id: userId, role };
     request.session = { user };
     request.user = user;
 

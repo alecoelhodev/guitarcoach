@@ -18,6 +18,7 @@ describe('Role-based access control (e2e)', () => {
 
     prisma = app.get(PrismaService);
     await prisma.routineTask.deleteMany();
+    await prisma.routine.deleteMany();
     await prisma.task.deleteMany();
     await prisma.user.deleteMany();
   });

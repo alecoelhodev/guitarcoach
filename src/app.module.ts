@@ -7,6 +7,7 @@ import { AppConfigModule } from './config/app-config.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
+import { RoutinesModule } from './routines/routines.module';
 import { TasksModule } from './tasks/tasks.module';
 import { UsersModule } from './users/users.module';
 
@@ -21,6 +22,7 @@ import { UsersModule } from './users/users.module';
     HealthModule,
     UsersModule,
     TasksModule,
+    RoutinesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
