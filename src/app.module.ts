@@ -6,6 +6,8 @@ import KeyvRedis from '@keyv/redis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { createAuth } from './auth/auth';
+import { RedisRateLimitStorage } from './auth/redis-rate-limit-storage';
+import { RedisRateLimitStorageModule } from './auth/redis-rate-limit-storage.module';
 import { AppConfigModule } from './config/app-config.module';
 import { EnvironmentVariables } from './config/env.validation';
 import { HealthModule } from './health/health.module';
@@ -19,6 +21,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     AppConfigModule,
     PrismaModule,
+    RedisRateLimitStorageModule,
     CacheModule.registerAsync({
       isGlobal: true,
       inject: [ConfigService],
@@ -32,8 +35,11 @@ import { UsersModule } from './users/users.module';
       }),
     }),
     AuthModule.forRootAsync({
-      inject: [PrismaService],
-      useFactory: (prisma: PrismaService) => ({ auth: createAuth(prisma) }),
+      inject: [PrismaService, RedisRateLimitStorage],
+      useFactory: (
+        prisma: PrismaService,
+        redisRateLimitStorage: RedisRateLimitStorage,
+      ) => ({ auth: createAuth(prisma, redisRateLimitStorage) }),
     }),
     HealthModule,
     UsersModule,
