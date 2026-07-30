@@ -1,3 +1,4 @@
+import { CacheModule } from '@nestjs/cache-manager';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
@@ -15,11 +16,17 @@ import { FakeAuthGuard } from './fake-auth.guard';
  * reads the exact same PUBLIC/OPTIONAL/ROLES reflector metadata the real
  * guard reads. Lets e2e specs drive auth via the x-test-role header (see
  * requestAs in ./request-as) instead of a real Better Auth sign-in flow.
+ *
+ * Uses CacheModule's default in-memory store rather than AppModule's Redis
+ * store — TasksService's cache-aside logic is store-agnostic, and each test
+ * gets a fresh app (and therefore a fresh cache) via beforeEach, so this
+ * avoids requiring a running Redis for e2e runs.
  */
 export async function buildTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
     imports: [
       AppConfigModule,
+      CacheModule.register({ isGlobal: true }),
       PrismaModule,
       UsersModule,
       TasksModule,
