@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthModule } from '@thallesp/nestjs-better-auth';
 import KeyvRedis from '@keyv/redis';
+import type { RedisClientOptions } from '@redis/client';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { createAuth } from './auth/auth';
@@ -31,7 +32,19 @@ import { UsersModule } from './users/users.module';
         configService: ConfigService<EnvironmentVariables, true>,
       ) => ({
         stores: [
-          new KeyvRedis(configService.get('REDIS_URL', { infer: true })),
+          // disableOfflineQueue + a bounded connectionTimeout keep a Redis
+          // outage from hanging cache reads/writes; TasksService's
+          // safeCacheGet/Set/Del already fail open on a rejection, but that
+          // only helps once the underlying call actually rejects instead of
+          // queuing forever.
+          new KeyvRedis(
+            {
+              url: configService.get('REDIS_URL', { infer: true }),
+              socket: { connectTimeout: 2000 },
+              disableOfflineQueue: true,
+            } satisfies RedisClientOptions,
+            { connectionTimeout: 2000, throwOnConnectError: false },
+          ),
         ],
         ttl: configService.get('CACHE_TTL_MS', { infer: true }),
       }),

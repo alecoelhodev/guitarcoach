@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Prisma, Routine, RoutineTask } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,6 +57,8 @@ function notFound(id: string): NotFoundException {
 
 @Injectable()
 export class RoutinesService {
+  private readonly logger = new Logger(RoutinesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisLock: RedisLockService,
@@ -254,10 +258,15 @@ export class RoutinesService {
     // lock so only one reorder is in flight at a time; a second concurrent
     // request fails fast with 409 rather than queuing.
     const lockKey = this.reorderLockKey(routineId);
-    const lockToken = await this.redisLock.acquire(
-      lockKey,
-      REORDER_LOCK_TTL_MS,
-    );
+    let lockToken: string | null;
+    try {
+      lockToken = await this.redisLock.acquire(lockKey, REORDER_LOCK_TTL_MS);
+    } catch (error) {
+      this.logger.warn('Failed to acquire reorder lock', error);
+      throw new ServiceUnavailableException(
+        'Reordering is temporarily unavailable',
+      );
+    }
 
     if (!lockToken) {
       throw new ConflictException(
@@ -306,7 +315,11 @@ export class RoutinesService {
         orderBy: { position: 'asc' },
       });
     } finally {
-      await this.redisLock.release(lockKey, lockToken);
+      try {
+        await this.redisLock.release(lockKey, lockToken);
+      } catch (error) {
+        this.logger.warn('Failed to release reorder lock', error);
+      }
     }
   }
 

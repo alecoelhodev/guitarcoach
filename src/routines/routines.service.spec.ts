@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Routine, RoutineTask, Task } from '../generated/prisma/client';
@@ -569,6 +570,28 @@ describe('RoutinesService', () => {
       expect(redisLock.release.mock.invocationCallOrder[0]).toBeGreaterThan(
         prisma.$transaction.mock.invocationCallOrder[0],
       );
+    });
+
+    it('throws ServiceUnavailableException when acquiring the lock fails', async () => {
+      redisLock.acquire.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(
+        service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
+      ).rejects.toThrow(ServiceUnavailableException);
+      expect(prisma.routineTask.findMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('still returns the reordered result when releasing the lock fails', async () => {
+      const reordered = [buildRoutineTask({ taskId: TASK_ID, position: 1 })];
+      prisma.routineTask.findMany.mockResolvedValue(reordered);
+      prisma.routineTask.update.mockReturnValue('update-call');
+      prisma.$transaction.mockResolvedValue([]);
+      redisLock.release.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(
+        service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
+      ).resolves.toEqual(reordered);
     });
 
     it('throws ConflictException without touching the database when the routine is already locked', async () => {

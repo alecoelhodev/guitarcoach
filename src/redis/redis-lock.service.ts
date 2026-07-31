@@ -24,14 +24,31 @@ export class RedisLockService implements OnModuleInit, OnModuleDestroy {
   private readonly client: RedisClientType;
 
   constructor(redisUrl: string) {
-    this.client = createClient({ url: redisUrl });
+    // disableOfflineQueue makes acquire/release reject immediately when the
+    // socket isn't ready instead of queuing forever while it reconnects in
+    // the background — the default reconnectStrategy is left untouched so
+    // the client keeps retrying and reconnects automatically once Redis is
+    // back, with no extra reconnect-on-demand logic needed here.
+    this.client = createClient({
+      url: redisUrl,
+      socket: { connectTimeout: 2000 },
+      disableOfflineQueue: true,
+    });
     this.client.on('error', (error: Error) => {
       this.logger.error('Redis client error', error);
     });
   }
 
+  // Bounded so a Redis outage at container startup can't block Nest's
+  // bootstrap forever — the underlying connect attempt keeps retrying in the
+  // background (see constructor) even if this wait times out.
   async onModuleInit(): Promise<void> {
-    await this.client.connect();
+    await Promise.race([
+      this.client.connect().catch((error: Error) => {
+        this.logger.warn('Redis connect failed at startup', error);
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ]);
   }
 
   async onModuleDestroy(): Promise<void> {
