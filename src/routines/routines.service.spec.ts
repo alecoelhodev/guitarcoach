@@ -8,6 +8,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Routine, RoutineTask, Task } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisLockService } from '../redis/redis-lock.service';
+import { RoutineCreatedProducer } from './events/routine-created.producer';
 import { RoutinesService } from './routines.service';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
@@ -85,12 +86,17 @@ type MockRedisLockService = {
   release: jest.Mock;
 };
 
+type MockRoutineCreatedProducer = {
+  publish: jest.Mock;
+};
+
 const LOCK_TOKEN = 'lock-token';
 
 describe('RoutinesService', () => {
   let service: RoutinesService;
   let prisma: MockPrismaService;
   let redisLock: MockRedisLockService;
+  let routineCreatedProducer: MockRoutineCreatedProducer;
 
   beforeEach(async () => {
     prisma = {
@@ -127,11 +133,14 @@ describe('RoutinesService', () => {
     // to "acquired" so only the lock-conflict test needs to override it.
     redisLock.acquire.mockResolvedValue(LOCK_TOKEN);
 
+    routineCreatedProducer = { publish: jest.fn() };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RoutinesService,
         { provide: PrismaService, useValue: prisma },
         { provide: RedisLockService, useValue: redisLock },
+        { provide: RoutineCreatedProducer, useValue: routineCreatedProducer },
       ],
     }).compile();
 
@@ -149,6 +158,27 @@ describe('RoutinesService', () => {
         data: { title: 'Daily warm-up', userId: USER_ID },
       });
       expect(routine).toEqual(created);
+    });
+
+    it('publishes a routine.created event after a successful create', async () => {
+      const created = buildRoutine();
+      prisma.routine.create.mockResolvedValue(created);
+
+      await service.create(USER_ID, { title: 'Daily warm-up' });
+
+      expect(routineCreatedProducer.publish).toHaveBeenCalledWith(created);
+    });
+
+    it('still returns the created routine when publishing throws synchronously', async () => {
+      const created = buildRoutine();
+      prisma.routine.create.mockResolvedValue(created);
+      routineCreatedProducer.publish.mockImplementation(() => {
+        throw new Error('broker unavailable');
+      });
+
+      await expect(
+        service.create(USER_ID, { title: 'Daily warm-up' }),
+      ).resolves.toEqual(created);
     });
   });
 
