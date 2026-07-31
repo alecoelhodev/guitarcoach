@@ -10,6 +10,7 @@ export const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
   REDIS_URL: z.url(),
+  RABBITMQ_URL: z.url(),
   CACHE_TTL_MS: z.coerce
     .number()
     .int()

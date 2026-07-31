@@ -4,6 +4,7 @@ const DATABASE_URL = 'postgresql://user:pass@localhost:5432/db?schema=public';
 const BETTER_AUTH_SECRET = 'a'.repeat(32);
 const BETTER_AUTH_URL = 'http://localhost:3000';
 const REDIS_URL = 'redis://localhost:6379';
+const RABBITMQ_URL = 'amqp://user:pass@localhost:5672';
 
 describe('validate', () => {
   it('succeeds for a valid configuration', () => {
@@ -16,6 +17,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
     });
 
     expect(result).toEqual({
@@ -27,6 +29,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
       CACHE_TTL_MS: 300_000,
     });
   });
@@ -39,6 +42,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -51,6 +55,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -62,6 +67,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -74,6 +80,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -85,6 +92,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -97,6 +105,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET: 'too-short',
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -109,6 +118,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL: 'not-a-url',
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -132,6 +142,32 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL: 'not-a-url',
+        RABBITMQ_URL,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('fails when RABBITMQ_URL is missing', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('fails when RABBITMQ_URL is not a valid URL', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL: 'not-a-url',
       }),
     ).toThrow('Environment validation failed');
   });
@@ -144,6 +180,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
         CACHE_TTL_MS: '1000',
       }),
     ).toThrow('Environment validation failed');
@@ -157,6 +194,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
         CACHE_TTL_MS: '700000',
       }),
     ).toThrow('Environment validation failed');
@@ -169,6 +207,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
       CACHE_TTL_MS: '120000',
     });
 
@@ -183,6 +222,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
     });
 
     expect(result.PORT).toBe(4000);
@@ -200,6 +240,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
     });
 
     expect(result.TEST_DATABASE_URL).toBe(TEST_DATABASE_URL);
@@ -214,6 +255,7 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        RABBITMQ_URL,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -225,6 +267,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
     });
 
     expect(result.PORT).toBe(3000);
@@ -239,6 +282,7 @@ describe('validate', () => {
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
       REDIS_URL,
+      RABBITMQ_URL,
     });
 
     expect(result.CACHE_TTL_MS).toBe(300_000);

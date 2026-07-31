@@ -9,6 +9,7 @@ import {
 import { Prisma, Routine, RoutineTask } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisLockService } from '../redis/redis-lock.service';
+import { RoutineCreatedProducer } from './events/routine-created.producer';
 import { AddRoutineTaskDto } from './dto/add-routine-task.dto';
 import { CreateRoutineDto } from './dto/create-routine.dto';
 import { FindRoutinesQueryDto } from './dto/find-routines-query.dto';
@@ -62,10 +63,26 @@ export class RoutinesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redisLock: RedisLockService,
+    private readonly routineCreatedProducer: RoutineCreatedProducer,
   ) {}
 
-  create(userId: string, dto: CreateRoutineDto): Promise<Routine> {
-    return this.prisma.routine.create({ data: { ...dto, userId } });
+  async create(userId: string, dto: CreateRoutineDto): Promise<Routine> {
+    const routine = await this.prisma.routine.create({
+      data: { ...dto, userId },
+    });
+
+    // Publishing is a side effect of a creation that already succeeded in
+    // the database — a broker hiccup must not turn into a failed request.
+    // RoutineCreatedProducer.publish is itself non-throwing (it subscribes
+    // to its own error channel), but this guards against a synchronous
+    // throw before that subscription is set up.
+    try {
+      this.routineCreatedProducer.publish(routine);
+    } catch (error) {
+      this.logger.warn('Failed to publish routine.created event', error);
+    }
+
+    return routine;
   }
 
   async findAll(
