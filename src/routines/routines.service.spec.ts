@@ -2,10 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Prisma, Routine, RoutineTask } from '../generated/prisma/client';
+import { Prisma, Routine, RoutineTask, Task } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisLockService } from '../redis/redis-lock.service';
 import { RoutinesService } from './routines.service';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
@@ -44,6 +46,20 @@ function buildRoutineTask(overrides: Partial<RoutineTask> = {}): RoutineTask {
   };
 }
 
+function buildTask(overrides: Partial<Task> = {}): Task {
+  return {
+    id: TASK_ID,
+    title: 'Chromatic finger warm-up',
+    category: 'technique',
+    difficulty: 'easy',
+    referenceLink: null,
+    description: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
 type MockPrismaService = {
   routine: {
     create: jest.Mock;
@@ -64,9 +80,17 @@ type MockPrismaService = {
   $transaction: jest.Mock;
 };
 
+type MockRedisLockService = {
+  acquire: jest.Mock;
+  release: jest.Mock;
+};
+
+const LOCK_TOKEN = 'lock-token';
+
 describe('RoutinesService', () => {
   let service: RoutinesService;
   let prisma: MockPrismaService;
+  let redisLock: MockRedisLockService;
 
   beforeEach(async () => {
     prisma = {
@@ -95,10 +119,19 @@ describe('RoutinesService', () => {
     // not-found/not-owned path.
     prisma.routine.findFirst.mockResolvedValue(buildRoutine());
 
+    redisLock = {
+      acquire: jest.fn(),
+      release: jest.fn(),
+    };
+    // reorderTasks acquires this lock before doing anything else; default it
+    // to "acquired" so only the lock-conflict test needs to override it.
+    redisLock.acquire.mockResolvedValue(LOCK_TOKEN);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RoutinesService,
         { provide: PrismaService, useValue: prisma },
+        { provide: RedisLockService, useValue: redisLock },
       ],
     }).compile();
 
@@ -244,6 +277,42 @@ describe('RoutinesService', () => {
       await expect(service.remove(USER_ID, 'referenced-id')).rejects.toThrow(
         ConflictException,
       );
+    });
+  });
+
+  describe('findTasks', () => {
+    it('returns the routine tasks with nested task data, ordered by position', async () => {
+      const routineTasks = [
+        { ...buildRoutineTask({ position: 1 }), task: buildTask() },
+      ];
+      prisma.routineTask.findMany.mockResolvedValue(routineTasks);
+
+      const result = await service.findTasks(USER_ID, ROUTINE_ID);
+
+      expect(prisma.routine.findFirst).toHaveBeenCalledWith({
+        where: { id: ROUTINE_ID, userId: USER_ID },
+      });
+      expect(prisma.routineTask.findMany).toHaveBeenCalledWith({
+        where: { routineId: ROUTINE_ID },
+        orderBy: { position: 'asc' },
+        include: { task: true },
+      });
+      expect(result).toEqual(routineTasks);
+    });
+
+    it('returns an empty array when the routine has no tasks', async () => {
+      prisma.routineTask.findMany.mockResolvedValue([]);
+
+      await expect(service.findTasks(USER_ID, ROUTINE_ID)).resolves.toEqual([]);
+    });
+
+    it('throws NotFoundException when the routine is not owned by the user', async () => {
+      prisma.routine.findFirst.mockResolvedValue(null);
+
+      await expect(service.findTasks(USER_ID, ROUTINE_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.routineTask.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -482,6 +551,61 @@ describe('RoutinesService', () => {
       expect(result[0].taskId).toBe(TASK_ID_3);
     });
 
+    it('acquires a per-routine reorder lock and releases it on success', async () => {
+      prisma.routineTask.findMany.mockResolvedValue([
+        buildRoutineTask({ taskId: TASK_ID, position: 1 }),
+      ]);
+      prisma.routineTask.update.mockReturnValue('update-call');
+      prisma.$transaction.mockResolvedValue([]);
+
+      await service.reorderTasks(USER_ID, ROUTINE_ID, {
+        taskIds: [TASK_ID],
+      });
+
+      const lockKey = `lock:routine:${ROUTINE_ID}:reorder`;
+      expect(redisLock.acquire).toHaveBeenCalledWith(lockKey, 5000);
+      expect(redisLock.release).toHaveBeenCalledWith(lockKey, LOCK_TOKEN);
+      // Lock must be held for the whole critical section: released only
+      // after the transaction (and the read-back that follows it) complete.
+      expect(redisLock.release.mock.invocationCallOrder[0]).toBeGreaterThan(
+        prisma.$transaction.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('throws ServiceUnavailableException when acquiring the lock fails', async () => {
+      redisLock.acquire.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(
+        service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
+      ).rejects.toThrow(ServiceUnavailableException);
+      expect(prisma.routineTask.findMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('still returns the reordered result when releasing the lock fails', async () => {
+      const reordered = [buildRoutineTask({ taskId: TASK_ID, position: 1 })];
+      prisma.routineTask.findMany.mockResolvedValue(reordered);
+      prisma.routineTask.update.mockReturnValue('update-call');
+      prisma.$transaction.mockResolvedValue([]);
+      redisLock.release.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(
+        service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
+      ).resolves.toEqual(reordered);
+    });
+
+    it('throws ConflictException without touching the database when the routine is already locked', async () => {
+      redisLock.acquire.mockResolvedValue(null);
+
+      await expect(
+        service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.routineTask.findMany).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      // Nothing to release: acquisition never handed back a token.
+      expect(redisLock.release).not.toHaveBeenCalled();
+    });
+
     it('throws NotFoundException when the routine is not owned by the user', async () => {
       prisma.routine.findFirst.mockResolvedValue(null);
 
@@ -489,6 +613,7 @@ describe('RoutinesService', () => {
         service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
       ).rejects.toThrow(NotFoundException);
       expect(prisma.routineTask.findMany).not.toHaveBeenCalled();
+      expect(redisLock.acquire).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when a taskId is missing from the request', async () => {
@@ -501,6 +626,27 @@ describe('RoutinesService', () => {
         service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
       ).rejects.toThrow(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
+      // Lock must still be released even though validation rejected the request.
+      expect(redisLock.release).toHaveBeenCalledWith(
+        `lock:routine:${ROUTINE_ID}:reorder`,
+        LOCK_TOKEN,
+      );
+    });
+
+    it('releases the lock even when the transaction throws', async () => {
+      prisma.routineTask.findMany.mockResolvedValue([
+        buildRoutineTask({ taskId: TASK_ID, position: 1 }),
+      ]);
+      prisma.routineTask.update.mockReturnValue('update-call');
+      prisma.$transaction.mockRejectedValue(new Error('transaction failed'));
+
+      await expect(
+        service.reorderTasks(USER_ID, ROUTINE_ID, { taskIds: [TASK_ID] }),
+      ).rejects.toThrow('transaction failed');
+      expect(redisLock.release).toHaveBeenCalledWith(
+        `lock:routine:${ROUTINE_ID}:reorder`,
+        LOCK_TOKEN,
+      );
     });
 
     it('throws BadRequestException when a taskId is duplicated', async () => {

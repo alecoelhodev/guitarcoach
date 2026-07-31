@@ -6,8 +6,16 @@ export const envSchema = z.object({
   API_PREFIX: z.string().min(1).default('api'),
   API_VERSION: z.string().min(1).default('v1'),
   DATABASE_URL: z.url(),
+  TEST_DATABASE_URL: z.url().optional(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
+  REDIS_URL: z.url(),
+  CACHE_TTL_MS: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .max(600_000)
+    .default(300_000),
 });
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;

@@ -1,3 +1,4 @@
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Task } from '../generated/prisma/client';
@@ -36,9 +37,16 @@ type MockPrismaService = {
   };
 };
 
+type MockCache = {
+  get: jest.Mock;
+  set: jest.Mock;
+  del: jest.Mock;
+};
+
 describe('TasksService', () => {
   let service: TasksService;
   let prisma: MockPrismaService;
+  let cache: MockCache;
 
   beforeEach(async () => {
     prisma = {
@@ -51,9 +59,18 @@ describe('TasksService', () => {
         delete: jest.fn(),
       },
     };
+    cache = {
+      get: jest.fn().mockResolvedValue(undefined),
+      set: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [TasksService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        TasksService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CACHE_MANAGER, useValue: cache },
+      ],
     }).compile();
 
     service = module.get<TasksService>(TasksService);
@@ -78,6 +95,19 @@ describe('TasksService', () => {
         },
       });
       expect(task).toEqual(created);
+    });
+
+    it('bumps the list cache version so stale list caches are not served', async () => {
+      prisma.task.create.mockResolvedValue(buildTask());
+      cache.get.mockResolvedValue(3);
+
+      await service.create({
+        title: 'Chromatic warm-up',
+        category: 'technique',
+        difficulty: 'easy',
+      });
+
+      expect(cache.set).toHaveBeenCalledWith('tasks:list:version', 4, 0);
     });
   });
 
@@ -128,6 +158,60 @@ describe('TasksService', () => {
         totalPages: 0,
       });
     });
+
+    it('returns the cached result without querying Prisma on a cache hit', async () => {
+      const cached = {
+        data: [buildTask()],
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      };
+      cache.get.mockImplementation((key: string) =>
+        Promise.resolve(key === 'tasks:list:version' ? undefined : cached),
+      );
+
+      const result = await service.findAll({});
+
+      expect(result).toEqual(cached);
+      expect(prisma.task.findMany).not.toHaveBeenCalled();
+      expect(prisma.task.count).not.toHaveBeenCalled();
+    });
+
+    it('caches the computed result under a key scoped to the query and list version', async () => {
+      const tasks = [buildTask()];
+      prisma.task.findMany.mockResolvedValue(tasks);
+      prisma.task.count.mockResolvedValue(1);
+      cache.get.mockResolvedValue(undefined);
+
+      const result = await service.findAll({ page: 2, limit: 5 });
+
+      expect(cache.set).toHaveBeenCalledWith('tasks:list:v0:2:5::', result);
+    });
+
+    it('falls back to Prisma when the cache is down on read', async () => {
+      const tasks = [buildTask()];
+      cache.get.mockRejectedValue(new Error('Redis unavailable'));
+      prisma.task.findMany.mockResolvedValue(tasks);
+      prisma.task.count.mockResolvedValue(1);
+
+      const result = await service.findAll({});
+
+      expect(result).toEqual({
+        data: tasks,
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      });
+      expect(prisma.task.findMany).toHaveBeenCalled();
+    });
+
+    it('still returns the computed result when the cache is down on write', async () => {
+      const tasks = [buildTask()];
+      prisma.task.findMany.mockResolvedValue(tasks);
+      prisma.task.count.mockResolvedValue(1);
+      cache.set.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(service.findAll({})).resolves.toEqual({
+        data: tasks,
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      });
+    });
   });
 
   describe('findById', () => {
@@ -138,12 +222,37 @@ describe('TasksService', () => {
       await expect(service.findById(created.id)).resolves.toEqual(created);
     });
 
+    it('caches the task on a cache miss', async () => {
+      const created = buildTask();
+      prisma.task.findUnique.mockResolvedValue(created);
+
+      await service.findById(created.id);
+
+      expect(cache.set).toHaveBeenCalledWith(`tasks:${created.id}`, created);
+    });
+
+    it('returns the cached task without querying Prisma on a cache hit', async () => {
+      const cached = buildTask();
+      cache.get.mockResolvedValue(cached);
+
+      await expect(service.findById(cached.id)).resolves.toEqual(cached);
+      expect(prisma.task.findUnique).not.toHaveBeenCalled();
+    });
+
     it('throws NotFoundException for an unknown id', async () => {
       prisma.task.findUnique.mockResolvedValue(null);
 
       await expect(service.findById('unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('falls back to Prisma when the cache is down', async () => {
+      const created = buildTask();
+      cache.get.mockRejectedValue(new Error('Redis unavailable'));
+      prisma.task.findUnique.mockResolvedValue(created);
+
+      await expect(service.findById(created.id)).resolves.toEqual(created);
     });
   });
 
@@ -163,12 +272,35 @@ describe('TasksService', () => {
       expect(task).toEqual(updated);
     });
 
+    it('invalidates the task cache entry and bumps the list cache version', async () => {
+      const updated = buildTask({ difficulty: 'medium' });
+      prisma.task.update.mockResolvedValue(updated);
+      cache.get.mockResolvedValue(2);
+
+      await service.update(updated.id, { difficulty: 'medium' });
+
+      expect(cache.del).toHaveBeenCalledWith(`tasks:${updated.id}`);
+      expect(cache.set).toHaveBeenCalledWith('tasks:list:version', 3, 0);
+    });
+
     it('throws NotFoundException for an unknown id', async () => {
       prisma.task.update.mockRejectedValue(prismaError('P2025'));
 
       await expect(
         service.update('unknown-id', { title: 'New title' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('still returns the updated task when the cache is down', async () => {
+      const updated = buildTask({ difficulty: 'medium' });
+      prisma.task.update.mockResolvedValue(updated);
+      cache.get.mockRejectedValue(new Error('Redis unavailable'));
+      cache.del.mockRejectedValue(new Error('Redis unavailable'));
+      cache.set.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(
+        service.update(updated.id, { difficulty: 'medium' }),
+      ).resolves.toEqual(updated);
     });
   });
 
@@ -180,6 +312,15 @@ describe('TasksService', () => {
       expect(prisma.task.delete).toHaveBeenCalledWith({
         where: { id: 'some-id' },
       });
+    });
+
+    it('invalidates the task cache entry and bumps the list cache version', async () => {
+      prisma.task.delete.mockResolvedValue(buildTask());
+
+      await service.remove('some-id');
+
+      expect(cache.del).toHaveBeenCalledWith('tasks:some-id');
+      expect(cache.set).toHaveBeenCalledWith('tasks:list:version', 1, 0);
     });
 
     it('throws NotFoundException for an unknown id', async () => {
@@ -196,6 +337,15 @@ describe('TasksService', () => {
       await expect(service.remove('referenced-id')).rejects.toThrow(
         ConflictException,
       );
+    });
+
+    it('still succeeds when the cache is down', async () => {
+      prisma.task.delete.mockResolvedValue(buildTask());
+      cache.get.mockRejectedValue(new Error('Redis unavailable'));
+      cache.del.mockRejectedValue(new Error('Redis unavailable'));
+      cache.set.mockRejectedValue(new Error('Redis unavailable'));
+
+      await expect(service.remove('some-id')).resolves.toBeUndefined();
     });
   });
 });

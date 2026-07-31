@@ -9,6 +9,7 @@ import {
   TaskDifficulty,
 } from '../src/generated/prisma/client';
 import { createAuth } from '../src/auth/auth';
+import { RedisRateLimitStorage } from '../src/auth/redis-rate-limit-storage';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 expand(dotenv.config());
@@ -135,8 +136,12 @@ const SEED_ROUTINES: SeedRoutine[] = [
   },
 ];
 
+if (!process.env.REDIS_URL) {
+  throw new Error('REDIS_URL is not set. Add it to .env (see .env.example).');
+}
+
 const prisma = new PrismaService();
-const auth = createAuth(prisma);
+const auth = createAuth(prisma, new RedisRateLimitStorage(process.env.REDIS_URL));
 
 async function seedUser(
   seed: SeedUser,

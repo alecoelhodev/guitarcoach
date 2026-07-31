@@ -19,7 +19,11 @@ import { FindRoutinesQueryDto } from './dto/find-routines-query.dto';
 import { ReorderRoutineTasksDto } from './dto/reorder-routine-tasks.dto';
 import { UpdateRoutineDto } from './dto/update-routine.dto';
 import { UpdateRoutineTaskDto } from './dto/update-routine-task.dto';
-import { PaginatedResult, RoutinesService } from './routines.service';
+import {
+  PaginatedResult,
+  RoutinesService,
+  RoutineTaskWithTask,
+} from './routines.service';
 
 @Controller('routines')
 export class RoutinesController {
@@ -78,6 +82,14 @@ export class RoutinesController {
       routineId,
       addRoutineTaskDto,
     );
+  }
+
+  @Get(':routineId/tasks')
+  findTasks(
+    @Session() session: UserSession,
+    @Param('routineId') routineId: string,
+  ): Promise<RoutineTaskWithTask[]> {
+    return this.routinesService.findTasks(session.user.id, routineId);
   }
 
   @Patch(':routineId/tasks/reorder')
