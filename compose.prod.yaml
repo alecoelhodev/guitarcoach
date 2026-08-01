@@ -17,3 +17,12 @@ services:
 
   rabbitmq:
     restart: unless-stopped
+
+  mongodb:
+    restart: unless-stopped
+
+  activity-feed-service:
+    build:
+      target: production
+    command: node dist/apps/activity-feed-service/main
+    restart: unless-stopped

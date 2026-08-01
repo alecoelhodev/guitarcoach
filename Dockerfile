@@ -22,10 +22,10 @@ COPY . .
 EXPOSE 3000
 CMD ["npm", "run", "start:dev"]
 
-# ---- build: compiles TypeScript -> dist/ ----
+# ---- build: compiles TypeScript -> dist/ (both Nest projects in this monorepo) ----
 FROM dependencies AS build
 COPY . .
-RUN npm run build
+RUN npm run build && npm run build:activity-feed-service
 
 # ---- production: minimal runtime image ----
 FROM node:${NODE_VERSION} AS production
@@ -38,4 +38,4 @@ USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
   CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-3000}/health/ready" || exit 1
-CMD ["node", "dist/main"]
+CMD ["node", "dist/apps/guitar-coach/main"]

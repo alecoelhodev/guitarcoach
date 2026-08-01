@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { randomUUID } from 'node:crypto';
+import { ACTIVITY_FEED_CLIENT } from '../../activity-feed/activity-feed.constants';
 import { Routine } from '../../generated/prisma/client';
-import { ROUTINE_EVENTS_CLIENT } from './rabbitmq.constants';
 import {
   ROUTINE_CREATED_PATTERN,
   RoutineCreatedEvent,
@@ -13,7 +13,7 @@ export class RoutineCreatedProducer {
   private readonly logger = new Logger(RoutineCreatedProducer.name);
 
   constructor(
-    @Inject(ROUTINE_EVENTS_CLIENT) private readonly client: ClientProxy,
+    @Inject(ACTIVITY_FEED_CLIENT) private readonly client: ClientProxy,
   ) {}
 
   // Fire-and-forget: routine creation must succeed independently of the

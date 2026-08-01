@@ -1,9 +1,34 @@
 {
   "$schema": "https://json.schemastore.org/nest-cli",
   "collection": "@nestjs/schematics",
-  "sourceRoot": "src",
+  "sourceRoot": "apps/guitar-coach/src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "plugins": ["@nestjs/swagger"]
+    "plugins": [
+      "@nestjs/swagger"
+    ],
+    "tsConfigPath": "apps/guitar-coach/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/guitar-coach",
+  "projects": {
+    "activity-feed-service": {
+      "type": "application",
+      "root": "apps/activity-feed-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/activity-feed-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/activity-feed-service/tsconfig.app.json"
+      }
+    },
+    "guitar-coach": {
+      "type": "application",
+      "root": "apps/guitar-coach",
+      "entryFile": "main",
+      "sourceRoot": "apps/guitar-coach/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/guitar-coach/tsconfig.app.json"
+      }
+    }
   }
 }

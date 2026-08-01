@@ -10,11 +10,11 @@ services:
     develop:
       watch:
         - action: sync
-          path: ./src
-          target: /usr/src/app/src
+          path: ./apps/guitar-coach/src
+          target: /usr/src/app/apps/guitar-coach/src
         - action: sync
-          path: ./test
-          target: /usr/src/app/test
+          path: ./apps/guitar-coach/test
+          target: /usr/src/app/apps/guitar-coach/test
         - action: sync
           path: ./nest-cli.json
           target: /usr/src/app/nest-cli.json
@@ -41,3 +41,30 @@ services:
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+
+  mongodb:
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+
+  activity-feed-service:
+    build:
+      target: development
+    command: npm run start:dev:activity-feed-service
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/activity-feed-service/src
+          target: /usr/src/app/apps/activity-feed-service/src
+        - action: sync
+          path: ./nest-cli.json
+          target: /usr/src/app/nest-cli.json
+        - action: sync
+          path: ./tsconfig.json
+          target: /usr/src/app/tsconfig.json
+        - action: sync
+          path: ./tsconfig.build.json
+          target: /usr/src/app/tsconfig.build.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./package-lock.json

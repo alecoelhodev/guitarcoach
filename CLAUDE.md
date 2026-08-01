@@ -4,27 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-This is a stock NestJS starter (generated via `@nestjs/cli`) with no application-specific code yet — `src/` only contains the default `AppModule` / `AppController` / `AppService`. Treat any architectural decisions as greenfield.
+This is a Nest CLI **monorepo** with two independently-deployable applications under `apps/`:
+
+- `apps/guitar-coach` — the main HTTP API (Postgres/Prisma, Redis, RabbitMQ producer, Better Auth). This is what most feature work targets.
+- `apps/activity-feed-service` — a pure NestJS microservice (`NestFactory.createMicroservice()`, no HTTP server) that consumes `routine.created` off RabbitMQ and persists activity-feed entries to MongoDB, plus answers `activity-feed.get-by-user` RPC queries from the main API.
+
+There is no shared `libs/` — each app owns its own copy of any cross-app contract it depends on (e.g. the `routine.created` event shape is duplicated, not imported across apps).
 
 ## Commands
 
 ```bash
+# apps/guitar-coach (main API) — no project name needed, it's the default project
 npm run start:dev      # run with watch mode (default for local dev)
 npm run start:debug    # watch mode with --debug
-npm run build           # nest build -> dist/
-npm run start:prod      # run compiled output from dist/main
+npm run build           # nest build -> dist/apps/guitar-coach
+npm run start:prod      # run compiled output from dist/apps/guitar-coach/main
 
-npm run lint             # eslint --fix over src, apps, libs, test
+# apps/activity-feed-service — explicit project name required
+npm run start:dev:activity-feed-service
+npm run start:debug:activity-feed-service
+npm run build:activity-feed-service       # nest build activity-feed-service -> dist/apps/activity-feed-service
+npm run start:prod:activity-feed-service  # node dist/apps/activity-feed-service/main
 
-npm run test             # jest unit tests (rootDir: src, matches *.spec.ts)
+npm run lint             # eslint --fix over apps, libs, test (covers both apps)
+
+npm run test             # jest unit tests (rootDir: ".", roots: apps/ — covers both apps' *.spec.ts)
 npm run test:watch
 npm run test:cov
-npm run test:e2e         # jest -c test/jest-e2e.json (matches *.e2e-spec.ts)
+npm run test:e2e         # jest -c apps/guitar-coach/test/jest-e2e.json (main API only; activity-feed-service has no e2e harness — see below)
 
 # single test file
-npx jest src/app.controller.spec.ts
+npx jest apps/guitar-coach/src/app.controller.spec.ts
 npx jest -t "test name substring"
 ```
+
+Note: `npx jest <path>` bypasses the `NODE_OPTIONS=--experimental-vm-modules` flag that `npm run test`/`npm run test:e2e` set — some controller specs (anything importing `@thallesp/nestjs-better-auth`, an ESM-only package) will fail to parse without it. Prefer `npm run test -- <pattern>` / `npm run test:e2e -- -t "..."` over raw `npx jest` when scoping to a subset.
 
 ## Dependency management (IMPORTANT)
 
@@ -36,17 +50,19 @@ The app runs in `node:24-alpine` (see `Dockerfile`) but is developed on macOS. H
 
 ```bash
 npm install                 # regenerate package-lock.json normally, on macOS is fine now
-docker compose -f compose.yaml -f compose.dev.yaml build api   # prove npm ci works the way the Dockerfile runs it
+docker compose -f compose.yaml -f compose.dev.yaml build api activity-feed-service   # prove npm ci works the way the Dockerfile runs it, for both apps sharing this lockfile/image
 ```
 
 Do not treat a successful local `npm install`/`npm ci` as sufficient proof on its own — the Docker build above is the real verification. If it ever fails again with a `Missing: X from lock file` error for a new package, the fix is the same pattern: identify the transitive package whose peer dependency only activates on Linux, and pin that peer as an explicit top-level devDependency rather than re-fixing the lockfile by hand each time.
 
 ## Architecture notes
 
-- Standard Nest module/controller/service structure; `src/main.ts` bootstraps `AppModule` via `NestFactory`.
-- Unit tests (`*.spec.ts`) live alongside the code they test in `src/`; Jest's `rootDir` is `src`. E2E tests (`*.e2e-spec.ts`) live in `test/` with their own Jest config (`test/jest-e2e.json`).
+- Standard Nest module/controller/service structure in both apps; `apps/guitar-coach/src/main.ts` bootstraps `AppModule` via `NestFactory.create()` (HTTP); `apps/activity-feed-service/src/main.ts` bootstraps via `NestFactory.createMicroservice()` (RabbitMQ only, no HTTP server, no `app.connectMicroservice()`).
+- Unit tests (`*.spec.ts`) live alongside the code they test under each app's `src/`; Jest's `rootDir` is `.` with `roots: ["<rootDir>/apps/"]`, so `npm run test` picks up both apps. E2E tests (`*.e2e-spec.ts`) live in `apps/guitar-coach/test/` with their own Jest config (`apps/guitar-coach/test/jest-e2e.json`) — `activity-feed-service` has no e2e harness; its live integration (RabbitMQ + MongoDB) is verified manually via `docker compose`, not automated.
+- RabbitMQ: main API publishes `routine.created` via `ClientProxy.emit()` (`ACTIVITY_FEED_CLIENT`, registered in `apps/guitar-coach/src/activity-feed/activity-feed.module.ts`) and calls `activity-feed.get-by-user` via `ClientProxy.send()` from `GET /api/v1/activity-feed`. Both patterns are carried over one durable queue, `activity_feed_queue`, owned/consumed solely by `activity-feed-service`.
+- MongoDB is used only by `activity-feed-service` (via `@nestjs/mongoose`) — the main API remains Postgres/Prisma-only.
 - ESLint uses flat config (`eslint.config.mjs`) with `typescript-eslint` recommendedTypeChecked + `eslint-plugin-prettier`. Notable rule overrides: `no-explicit-any` off, `no-floating-promises` and `no-unsafe-argument` are `warn` not `error`.
-- TypeScript config targets ES2023, uses `nodenext` module resolution, and has `noImplicitAny: false` with `strictNullChecks: true` (not full `strict` mode).
+- TypeScript config targets ES2023, uses `nodenext` module resolution, and has `noImplicitAny: false` with `strictNullChecks: true` (not full `strict` mode). Each app has its own `tsconfig.app.json` (extending the shared root `tsconfig.json`) referenced from `nest-cli.json`'s `projects` map.
 
 # Repository Working Instructions
 

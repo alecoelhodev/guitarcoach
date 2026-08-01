@@ -7,10 +7,10 @@ import {
   Task,
   TaskCategory,
   TaskDifficulty,
-} from '../src/generated/prisma/client';
-import { createAuth } from '../src/auth/auth';
-import { RedisRateLimitStorage } from '../src/auth/redis-rate-limit-storage';
-import { PrismaService } from '../src/prisma/prisma.service';
+} from '../apps/guitar-coach/src/generated/prisma/client';
+import { createAuth } from '../apps/guitar-coach/src/auth/auth';
+import { RedisRateLimitStorage } from '../apps/guitar-coach/src/auth/redis-rate-limit-storage';
+import { PrismaService } from '../apps/guitar-coach/src/prisma/prisma.service';
 
 expand(dotenv.config());
 

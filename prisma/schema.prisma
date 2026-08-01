@@ -5,7 +5,7 @@
 
 generator client {
   provider     = "prisma-client"
-  output       = "../src/generated/prisma"
+  output       = "../apps/guitar-coach/src/generated/prisma"
   moduleFormat = "cjs"
 }
 
