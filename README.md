@@ -285,6 +285,8 @@ Main API (apps/guitar-coach)
 - `GET /api/v1/activity-feed` derives `userId` **only** from the authenticated session (`@Session() session: UserSession`) — it takes no query parameters, so a request can't read another user's feed by passing `?userId=...`.
 - There's no pagination on the feed endpoint (fixed 50-entry cap) and no automated e2e test for the live RabbitMQ↔MongoDB round trip — verify that path manually via [Option A](#option-a--docker-compose): create a routine, then check `docker compose logs activity-feed-service` and `GET /api/v1/activity-feed`.
 
+For a full step-by-step walkthrough of every request flow in the app — auth, users, tasks, routines, the reorder lock, and this activity feed — including failure modes for Redis/RabbitMQ/MongoDB outages, see [`docs/flows.md`](docs/flows.md).
+
 ## Architecture decisions
 
 - **Nest CLI monorepo, not a shared lib.** `apps/guitar-coach` and `apps/activity-feed-service` are two Nest "projects" in one `nest-cli.json`, sharing one `package.json`/`node_modules`/Dockerfile/lockfile, but with no `libs/` between them — `activity-feed-service` keeps its own copy of the `routine.created` event contract rather than importing across `apps/`. Chosen for the isolation of a genuinely separate deployable (matches the spec calling it a standalone microservice) without the overhead of a second `package.json`/lockfile to keep in sync.
@@ -301,6 +303,7 @@ Main API (apps/guitar-coach)
 
 ## Resources
 
+- [docs/flows.md](docs/flows.md) — step-by-step walkthrough of every request flow and failure mode
 - [NestJS Documentation](https://docs.nestjs.com)
 - [NestJS Microservices (RabbitMQ)](https://docs.nestjs.com/microservices/rabbitmq)
 - [NestJS Monorepo mode](https://docs.nestjs.com/cli/monorepo)
