@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { createClient } from '@redis/client';
 import { RedisRateLimitStorage } from './redis-rate-limit-storage';
 
@@ -50,11 +51,21 @@ describe('RedisRateLimitStorage', () => {
     });
 
     it('fails open when Redis is unavailable', async () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
       client.eval.mockRejectedValue(new Error('Redis unavailable'));
 
       await expect(
         service.consume('key', { window: 60, max: 5 }),
       ).resolves.toEqual({ allowed: true, retryAfter: null });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Rate limit check failed for key "key"'),
+        expect.any(Error),
+      );
+
+      warnSpy.mockRestore();
     });
   });
 });
