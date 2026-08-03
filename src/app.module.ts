@@ -11,7 +11,9 @@ import { RedisRateLimitStorage } from './auth/redis-rate-limit-storage';
 import { RedisRateLimitStorageModule } from './auth/redis-rate-limit-storage.module';
 import { AppConfigModule } from './config/app-config.module';
 import { EnvironmentVariables } from './config/env.validation';
+import { GcpStorageModule } from './gcp-storage/gcp-storage.module';
 import { HealthModule } from './health/health.module';
+import { PracticeSessionsModule } from './practice-sessions/practice-sessions.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import { RedisLockModule } from './redis/redis-lock.module';
@@ -23,6 +25,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     AppConfigModule,
     PrismaModule,
+    GcpStorageModule,
     RedisRateLimitStorageModule,
     RedisLockModule,
     CacheModule.registerAsync({
@@ -60,6 +63,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     TasksModule,
     RoutinesModule,
+    PracticeSessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

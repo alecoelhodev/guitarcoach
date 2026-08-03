@@ -20,6 +20,8 @@ describe('UsersController (e2e)', () => {
     app = await buildTestApp();
 
     prisma = app.get(PrismaService);
+    await prisma.recording.deleteMany();
+    await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
     await prisma.routine.deleteMany();
     await prisma.user.deleteMany();

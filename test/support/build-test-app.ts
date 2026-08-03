@@ -4,12 +4,16 @@ import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { App } from 'supertest/types';
 import { AppConfigModule } from '../../src/config/app-config.module';
+import { GcpStorageModule } from '../../src/gcp-storage/gcp-storage.module';
+import { GcpStorageService } from '../../src/gcp-storage/gcp-storage.service';
+import { PracticeSessionsModule } from '../../src/practice-sessions/practice-sessions.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { RedisLockModule } from '../../src/redis/redis-lock.module';
 import { RoutinesModule } from '../../src/routines/routines.module';
 import { TasksModule } from '../../src/tasks/tasks.module';
 import { UsersModule } from '../../src/users/users.module';
 import { FakeAuthGuard } from './fake-auth.guard';
+import { FakeGcpStorageService } from './fake-gcp-storage.service';
 
 /**
  * Builds the same controller/service/Prisma wiring as AppModule, but swaps
@@ -29,6 +33,9 @@ import { FakeAuthGuard } from './fake-auth.guard';
  * is already a required env var (see env.validation.ts) and the Redis
  * container is already expected to be running for local/e2e use, same as
  * TEST_DATABASE_URL's Postgres container.
+ *
+ * GcpStorageService is swapped for an in-memory FakeGcpStorageService so
+ * e2e specs never make real GCS calls or need real bucket credentials.
  */
 export async function buildTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
@@ -36,13 +43,18 @@ export async function buildTestApp(): Promise<INestApplication<App>> {
       AppConfigModule,
       CacheModule.register({ isGlobal: true }),
       PrismaModule,
+      GcpStorageModule,
       RedisLockModule,
       UsersModule,
       TasksModule,
       RoutinesModule,
+      PracticeSessionsModule,
     ],
     providers: [{ provide: APP_GUARD, useClass: FakeAuthGuard }],
-  }).compile();
+  })
+    .overrideProvider(GcpStorageService)
+    .useClass(FakeGcpStorageService)
+    .compile();
 
   const app = moduleFixture.createNestApplication<INestApplication<App>>();
   app.setGlobalPrefix('api/v1');
