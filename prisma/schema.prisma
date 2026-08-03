@@ -64,9 +64,11 @@ model User {
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  routines Routine[]
-  sessions Session[]
-  accounts Account[]
+  routines         Routine[]
+  practiceSessions PracticeSession[]
+  recordings       Recording[]
+  sessions         Session[]
+  accounts         Account[]
 
   @@map("users")
 }
@@ -148,4 +150,34 @@ model RoutineTask {
   @@id([routineId, taskId])
   @@unique([routineId, position])
   @@map("routine_tasks")
+}
+
+model PracticeSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  title     String?  @db.VarChar
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id])
+  recordings Recording[]
+
+  @@map("practice_sessions")
+}
+
+model Recording {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  practiceSessionId String   @map("practice_session_id") @db.Uuid
+  objectName        String   @map("object_name")
+  originalFileName  String   @map("original_file_name")
+  contentType       String   @map("content_type")
+  sizeBytes         Int      @map("size_bytes")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user            User            @relation(fields: [userId], references: [id])
+  practiceSession PracticeSession @relation(fields: [practiceSessionId], references: [id])
+
+  @@map("recordings")
 }

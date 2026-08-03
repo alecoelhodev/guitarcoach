@@ -34,8 +34,13 @@ WORKDIR /usr/src/app
 COPY package.json ./
 COPY --from=production-dependencies /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/dist ./dist
+# compose.yaml's startup command runs `prisma migrate deploy` before the app
+# starts listening, which needs the schema/migrations/config at runtime, not
+# just what tsc compiled into dist/.
+COPY --from=build /usr/src/app/prisma ./prisma
+COPY --from=build /usr/src/app/prisma.config.ts ./prisma.config.ts
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 \
   CMD wget --no-verbose --tries=1 --spider "http://127.0.0.1:${PORT:-3000}/health/ready" || exit 1
-CMD ["node", "dist/main"]
+CMD ["node", "dist/src/main"]

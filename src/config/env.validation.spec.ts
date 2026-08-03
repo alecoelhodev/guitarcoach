@@ -5,6 +5,8 @@ const BETTER_AUTH_SECRET = 'a'.repeat(32);
 const BETTER_AUTH_URL = 'http://localhost:3000';
 const REDIS_URL = 'redis://localhost:6379';
 const RABBITMQ_URL = 'amqp://user:pass@localhost:5672';
+const GCP_PROJECT_ID = 'guitar-coach-dev';
+const GCS_RECORDINGS_BUCKET = 'guitar-coach-recordings-dev';
 
 describe('validate', () => {
   it('succeeds for a valid configuration', () => {
@@ -18,6 +20,8 @@ describe('validate', () => {
       BETTER_AUTH_URL,
       REDIS_URL,
       RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
     });
 
     expect(result).toEqual({
@@ -31,6 +35,10 @@ describe('validate', () => {
       REDIS_URL,
       RABBITMQ_URL,
       CACHE_TTL_MS: 300_000,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      RECORDING_UPLOAD_MAX_SIZE_BYTES: 52_428_800,
+      RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS: 900,
     });
   });
 
@@ -43,6 +51,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -56,6 +66,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -68,6 +80,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -81,6 +95,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -93,6 +109,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -106,6 +124,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -119,6 +139,8 @@ describe('validate', () => {
         BETTER_AUTH_URL: 'not-a-url',
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -130,6 +152,8 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -143,6 +167,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL: 'not-a-url',
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -155,6 +181,8 @@ describe('validate', () => {
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
         REDIS_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -168,6 +196,36 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL: 'not-a-url',
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('fails when GCP_PROJECT_ID is missing', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCS_RECORDINGS_BUCKET,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('fails when GCS_RECORDINGS_BUCKET is missing', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -181,6 +239,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
         CACHE_TTL_MS: '1000',
       }),
     ).toThrow('Environment validation failed');
@@ -195,6 +255,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
         CACHE_TTL_MS: '700000',
       }),
     ).toThrow('Environment validation failed');
@@ -208,6 +270,8 @@ describe('validate', () => {
       BETTER_AUTH_URL,
       REDIS_URL,
       RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
       CACHE_TTL_MS: '120000',
     });
 
@@ -223,6 +287,8 @@ describe('validate', () => {
       BETTER_AUTH_URL,
       REDIS_URL,
       RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
     });
 
     expect(result.PORT).toBe(4000);
@@ -241,6 +307,8 @@ describe('validate', () => {
       BETTER_AUTH_URL,
       REDIS_URL,
       RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
     });
 
     expect(result.TEST_DATABASE_URL).toBe(TEST_DATABASE_URL);
@@ -256,6 +324,8 @@ describe('validate', () => {
         BETTER_AUTH_URL,
         REDIS_URL,
         RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
   });
@@ -268,6 +338,8 @@ describe('validate', () => {
       BETTER_AUTH_URL,
       REDIS_URL,
       RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
     });
 
     expect(result.PORT).toBe(3000);
@@ -283,8 +355,26 @@ describe('validate', () => {
       BETTER_AUTH_URL,
       REDIS_URL,
       RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
     });
 
     expect(result.CACHE_TTL_MS).toBe(300_000);
+  });
+
+  it('applies defaults for RECORDING_UPLOAD_MAX_SIZE_BYTES and RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS when omitted', () => {
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+    });
+
+    expect(result.RECORDING_UPLOAD_MAX_SIZE_BYTES).toBe(52_428_800);
+    expect(result.RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS).toBe(900);
   });
 });

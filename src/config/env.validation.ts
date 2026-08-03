@@ -17,6 +17,18 @@ export const envSchema = z.object({
     .min(60_000)
     .max(600_000)
     .default(300_000),
+  GCP_PROJECT_ID: z.string().min(1),
+  GCS_RECORDINGS_BUCKET: z.string().min(1),
+  RECORDING_UPLOAD_MAX_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 * 1024),
+  RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(900),
 });
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;

@@ -4,7 +4,7 @@ services:
       target: production
     environment:
       NODE_ENV: production
-      START_COMMAND: node dist/main
+      START_COMMAND: node dist/src/main
     ports:
       - "${PORT:-3000}:3000"
     restart: unless-stopped
