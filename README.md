@@ -4,16 +4,60 @@ Backend API for Guitar Coach, built with [NestJS](https://nestjs.com/).
 
 ## Overview
 
+Guitar Coach is a backend API for tracking guitar practice: users build practice **routines** from a shared library of **tasks** (technique/theory/repertoire exercises), log **practice sessions**, and attach audio **recordings** of those sessions for later review.
+
 The project is a standard NestJS application (Express platform) organized by feature module:
 
 - **`config`** — loads and validates environment variables at startup using [Zod](https://zod.dev/) (`src/config/env.validation.ts`), exposed globally via `AppConfigModule`.
 - **`health`** — Kubernetes/Docker-style liveness and readiness probes via [`@nestjs/terminus`](https://docs.nestjs.com/recipes/terminus).
 - **`auth`** — email/password authentication via [Better Auth](https://www.better-auth.com/), mounted through [`@thallesp/nestjs-better-auth`](https://github.com/ThallesP/nestjs-better-auth) (see [Authentication](#authentication)).
 - **`users`** — CRUD user management backed by Postgres via Prisma (see [Architecture decisions](#architecture-decisions)).
-- **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination and filtering by `category`/`difficulty` (see [Data model](#data-model)).
+- **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination and filtering by `category`/`difficulty`, Redis-cached reads (see [Data model](#data-model)).
+- **`routines`** — user-owned, ordered lists of tasks with per-task target durations; supports reordering under a Redis distributed lock, and publishes a `routine.created` event to RabbitMQ (see [Routines](#routines)).
+- **`practice-sessions`** — user practice logs with attached audio recordings uploaded to Google Cloud Storage (see [Practice recordings](#practice-recordings)).
+- **`gcp-storage`** — thin wrapper around [`@google-cloud/storage`](https://github.com/googleapis/nodejs-storage) used by `practice-sessions` to upload/delete objects and mint signed download URLs (see [Architecture](#architecture)).
 - **`prisma`** — `PrismaService`/`PrismaModule` wiring Prisma ORM to Postgres (see [Architecture decisions](#architecture-decisions)).
 
-API docs are served by Swagger UI at `/docs` once the app is running.
+Cross-cutting infra (not feature modules, but wired globally in `AppModule`): a Redis-backed HTTP response cache, a Redis distributed lock, Redis-backed Better Auth rate-limit storage, and a self-consumed RabbitMQ queue for domain events (see [Architecture](#architecture)).
+
+**Tech stack**: NestJS 11 (Express), TypeScript, Prisma 7 with the `@prisma/adapter-pg` driver adapter, Postgres 17, Better Auth 1.6, Redis 8, RabbitMQ 4, Google Cloud Storage, Zod (config validation), class-validator/class-transformer (request DTOs), Jest (unit + e2e).
+
+API docs are served by Swagger UI at `/docs` once the app is running (covers the Nest-controller routes below; Better Auth's own `/auth/*` endpoints aren't introspectable by Swagger — see [Authentication](#authentication)).
+
+## Architecture
+
+The API runs as a single **hybrid** Nest application: it serves HTTP over Express and, in the same process, runs a RabbitMQ microservice consumer — there's no separate worker deployable.
+
+```mermaid
+flowchart LR
+    client[Client]
+
+    subgraph api["Guitar Coach API (Nest hybrid app)"]
+        http["HTTP controllers"]
+        consumer["RoutineCreatedConsumer"]
+    end
+
+    client -->|"REST + session cookie"| http
+    http --> postgres[("Postgres 17")]
+    http -->|"cache / lock / rate-limit"| redis[("Redis 8")]
+    http -->|"emit routine.created"| rabbitmq{{"RabbitMQ 4"}}
+    rabbitmq -->|"consume routine.created"| consumer
+    http -->|"upload / signed URL"| gcs[("Google Cloud Storage")]
+```
+
+- **Postgres** is the system of record for everything (via Prisma). Every other piece of infra below is a supporting concern the app can degrade gracefully without.
+- **Redis** backs three independent concerns, each with its own key namespace: an HTTP response cache for `GET /tasks*` (`TasksService`, via `@nestjs/cache-manager` + Keyv), a distributed lock guarding routine task-reordering (`RedisLockService`, `SET NX PX` + Lua compare-and-delete release), and rate-limit counters for Better Auth's `/sign-in/email`/`/sign-up/email` (`RedisRateLimitStorage`, wired as Better Auth's `customStorage` rather than `secondaryStorage` so session/verification data never lands in Redis). All three **fail open** — a Redis outage degrades to "no cache"/"no rate limit" rather than an outage, except the distributed lock, which fails closed (`503`) since reordering without it could corrupt task ordering.
+- **RabbitMQ** carries a single domain event today: `RoutineCreatedProducer` publishes `routine.created` (fire-and-forget — a broker outage must never fail routine creation) after `POST /routines`, consumed in-process by `RoutineCreatedConsumer`, currently just a logging placeholder for future side effects (notifications, analytics, etc.).
+- **Google Cloud Storage** stores practice recording bytes privately; only metadata (object name, content type, size) lives in Postgres. `GcpStorageService.uploadObject` writes incoming buffers to a short-lived temp file and uses `bucket.upload()` rather than `file.save(buffer)` — the latter reliably triggered a `"Cannot call write after a stream was destroyed"` race in the client library's internal write pipeline when the whole buffer was pushed before the async upload-request setup had settled; `bucket.upload()` feeds the same pipeline via a paced `fs.createReadStream`, avoiding the race.
+
+## User flow
+
+1. **Sign up / sign in** — email + password via Better Auth, session cookie issued (see [Authentication](#authentication)).
+2. **Browse the task library** — `GET /tasks`, optionally filtered by `category`/`difficulty` (see [Data model](#data-model)).
+3. **Build a routine** — create a routine and attach tasks to it in order, with optional per-task target durations; reorder as needed (see [Routines](#routines)).
+4. **Log a practice session** — create a practice session, optionally against a routine you followed (see [Practice recordings](#practice-recordings)).
+5. **Upload a recording** — attach an audio recording of that session to Google Cloud Storage.
+6. **Review later** — list a session's recordings and fetch a time-limited signed download URL for playback.
 
 ## Data model
 
@@ -22,13 +66,21 @@ Defined in `prisma/schema.prisma`; regenerate the diagram below by hand if the s
 ```mermaid
 erDiagram
     USER ||--o{ ROUTINE : "routines"
+    USER ||--o{ PRACTICE_SESSION : "practiceSessions"
+    USER ||--o{ RECORDING : "recordings"
+    USER ||--o{ SESSION : "sessions"
+    USER ||--o{ ACCOUNT : "accounts"
     ROUTINE ||--o{ ROUTINE_TASK : "routineTasks"
     TASK ||--o{ ROUTINE_TASK : "routineTasks"
+    PRACTICE_SESSION ||--o{ RECORDING : "recordings"
 
     USER {
         uuid id PK
         varchar displayName
         varchar email UK
+        boolean emailVerified
+        varchar role
+        boolean banned
         timestamp createdAt
         timestamp updatedAt
     }
@@ -62,6 +114,43 @@ erDiagram
         timestamp createdAt
         timestamp updatedAt
     }
+
+    PRACTICE_SESSION {
+        uuid id PK
+        uuid userId FK
+        varchar title
+        text notes
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    RECORDING {
+        uuid id PK
+        uuid userId FK
+        uuid practiceSessionId FK
+        text objectName
+        text originalFileName
+        varchar contentType
+        int sizeBytes
+        timestamp createdAt
+    }
+
+    SESSION {
+        uuid id PK
+        uuid userId FK
+        varchar token UK
+        timestamp expiresAt
+        varchar ipAddress
+        varchar userAgent
+    }
+
+    ACCOUNT {
+        uuid id PK
+        uuid userId FK
+        varchar providerId
+        varchar accountId
+        varchar password
+    }
 ```
 
 `category`, `difficulty`, and `status` are Postgres enums, not free-form strings:
@@ -72,16 +161,20 @@ erDiagram
 
 `RoutineTask` is a join table between `Routine` and `Task` with a composite primary key (`routineId`, `taskId`) and a unique `(routineId, position)` constraint enforcing one task per position within a routine.
 
+`Recording` carries **two** foreign keys back to different ancestors — `userId` (direct owner) and `practiceSessionId` (parent session) — a denormalized owner reference that keeps ownership checks a single-column lookup instead of a join through `PracticeSession`.
+
+Domain foreign keys (`Routine`, `RoutineTask`, `PracticeSession`, `Recording` → `User`) default to Postgres's `ON DELETE RESTRICT`: a user can't be deleted while they still own routines, sessions, or recordings. Better Auth's own tables behave differently — `Session` and `Account` cascade-delete when their `User` is deleted. `Session`, `Account`, and `Verification` are Better Auth's own tables (session tokens, linked credentials/OAuth accounts, and email-verification/reset tokens respectively); `Verification` has no FK to `User`, it's looked up by `identifier` instead.
+
 ## Local setup
 
 ### Prerequisites
 
 - Node.js 24.x and npm
-- Docker (for Postgres, and optionally for running the API itself)
+- Docker (for Postgres/Redis/RabbitMQ, and optionally for running the API itself)
 
 ### Option A — Docker Compose (recommended)
 
-Runs the API and Postgres together, with hot reload via bind mounts.
+Runs the API, Postgres, Redis, and RabbitMQ together, with hot reload via bind mounts.
 
 ```bash
 cp .env.example .env   # fill in POSTGRES_PASSWORD at minimum
@@ -130,8 +223,19 @@ Validated in `src/config/env.validation.ts`; the app fails fast on startup if re
 | `DATABASE_URL` | yes | — | Postgres connection string read by Prisma (CLI and `PrismaService`). `compose.yaml` overrides it to point at the `postgres` service; `.env.example` has a `localhost` default for running the API outside Docker |
 | `BETTER_AUTH_SECRET` | yes | — | Encryption/signing secret for Better Auth, min 32 characters. Generate with `openssl rand -base64 32`; never reuse the placeholder in `.env.example` |
 | `BETTER_AUTH_URL` | yes | — | Base URL the API is served from (e.g. `http://localhost:3000`). Better Auth appends its own `/auth` base path |
+| `REDIS_URL` | yes | — | Redis connection string, shared by the HTTP cache, the routine-reorder distributed lock, and Better Auth rate limiting. `compose.yaml` overrides it to point at the `redis` service |
+| `CACHE_TTL_MS` | no | `300000` | TTL for cached `GET /tasks`/`GET /tasks/:id` responses, 60000–600000 |
+| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | Compose only | — | Configure the `rabbitmq` container in `compose.yaml`; the default `guest`/`guest` account only authenticates from localhost inside the container, so a real user/password is required |
+| `RABBITMQ_URL` | yes | — | AMQP connection string for the `routine.created` event producer/consumer. `compose.yaml` overrides it to point at the `rabbitmq` service |
+| `GCP_PROJECT_ID` / `GCS_RECORDINGS_BUCKET` | yes | — | GCP project and private bucket practice recordings are uploaded to |
+| `GOOGLE_APPLICATION_CREDENTIALS` | local dev only | — | Path to a local service-account key file, read directly by `@google-cloud/storage` via Application Default Credentials (not through `ConfigService`). Must be fully-qualified — `~/...` is **not** expanded. Unset in production; Cloud Run's attached service account is used instead |
+| `GCP_CREDENTIALS_HOST_PATH` | Docker Compose only | — | Same absolute host path as above; `compose.dev.yaml` bind-mounts it read-only into the container and points `GOOGLE_APPLICATION_CREDENTIALS` at the in-container path for you |
+| `RECORDING_UPLOAD_MAX_SIZE_BYTES` | no | `52428800` (50MB) | Max accepted size for a single practice recording upload |
+| `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS` | no | `900` | How long a `GET .../download-url` signed URL stays valid |
 
 See `.env.example` for the full annotated list.
+
+Redis and RabbitMQ are **required** by `compose.yaml` (`RABBITMQ_USER`/`RABBITMQ_PASSWORD` fail the Compose config outright if unset) — Option A always needs them reachable. Running via Option B (Node directly), the app itself tolerates them being unreachable at boot: the cache, distributed lock, and rate-limit storage all fail open/closed gracefully (see [Architecture](#architecture)) rather than crashing startup, though routine reordering will return `503` without a working Redis, and `routine.created` events silently won't publish without a working RabbitMQ.
 
 ### Common commands
 
@@ -209,6 +313,41 @@ curl -i -b cookies.txt -X POST http://localhost:3000/auth/admin/set-role \
   -d '{"userId":"<target-user-uuid>","role":"admin"}'
 ```
 
+## Routines
+
+A routine is a user-owned, ordered list of tasks pulled from the shared [task library](#data-model), each with an optional target duration. All routes below require a session cookie — see [Authentication](#authentication) to sign in and obtain `cookies.txt` first. Routines and their tasks are scoped to the requesting user: acting on another user's routine returns `404 Not Found` (not `403`).
+
+```bash
+# Create a routine
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/routines \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Daily warm-up","notes":"15 minutes before practice"}'
+
+# Attach a task to it (position/targetDurationMinutes are optional; position defaults to "next")
+curl -i -b cookies.txt -X POST \
+  http://localhost:3000/api/v1/routines/<routine-uuid>/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"taskId":"<task-uuid>","targetDurationMinutes":10}'
+
+# List a routine's tasks, in order
+curl -i -b cookies.txt http://localhost:3000/api/v1/routines/<routine-uuid>/tasks
+
+# Reorder tasks (must include every taskId currently in the routine, in the new order)
+curl -i -b cookies.txt -X PATCH \
+  http://localhost:3000/api/v1/routines/<routine-uuid>/tasks/reorder \
+  -H 'Content-Type: application/json' \
+  -d '{"taskIds":["<task-uuid-2>","<task-uuid-1>"]}'
+
+# Remove a task from the routine
+curl -i -b cookies.txt -X DELETE \
+  http://localhost:3000/api/v1/routines/<routine-uuid>/tasks/<task-uuid>
+
+# Delete the routine (409 if it still has tasks attached)
+curl -i -b cookies.txt -X DELETE http://localhost:3000/api/v1/routines/<routine-uuid>
+```
+
+Reordering acquires a short-lived Redis distributed lock per routine (see [Architecture](#architecture)): a concurrent reorder request on the same routine fails fast with `409 Conflict` instead of queuing, and `503 Service Unavailable` if the lock can't be acquired at all. Creating a routine also publishes a `routine.created` event to RabbitMQ — this is fire-and-forget and never blocks or fails the request itself.
+
 ## Practice recordings
 
 Authenticated users can upload audio recordings of their practice sessions. Files are stored privately in Google Cloud Storage; only metadata (file name, content type, size, object path) is kept in Postgres. Requires `GCP_PROJECT_ID` and `GCS_RECORDINGS_BUCKET` to be set (see [Environment variables](#environment-variables)).
@@ -255,6 +394,11 @@ Sessions and recordings are scoped to the requesting user: acting on another use
 - **Global validation pipe with `whitelist` + `forbidNonWhitelisted`.** Incoming request bodies are stripped of unknown properties and reject requests containing them, so DTOs (e.g. `CreateUserDto`) are the sole contract for what the API accepts.
 - **Swagger mounted unauthenticated at `/docs`.** Unaffected by the global `AuthGuard` (Swagger, like Better Auth's own routes, is mounted directly on the underlying HTTP adapter rather than as a Nest controller). Acceptable for now since it only exposes route/DTO shapes, not data; revisit (gate behind auth, or disable in production) once that's no longer true.
 - **Auth endpoints documented in the README, not Swagger.** `@nestjs/swagger` only introspects Nest controllers; Better Auth's endpoints are raw Express middleware, so they don't appear in the generated OpenAPI document. See [Authentication](#authentication) for example requests instead.
+- **Redis caching fails open, not closed.** `TasksService`'s cache reads/writes (`safeCacheGet`/`safeCacheSet`/`safeCacheDel`) catch and log any Redis error rather than propagating it — Postgres stays authoritative, so a Redis outage degrades `GET /tasks*` to uncached rather than erroring. List-cache invalidation uses a version-bump key (`tasks:list:version`) rather than pattern-delete, since the generic `Cache` interface can't enumerate/delete by pattern.
+- **Distributed lock for routine reordering, not a DB transaction alone.** `RoutinesService.reorderTasks` acquires a per-routine Redis lock (`RedisLockService`, TTL 5s, Lua compare-and-delete release) before reordering, because a naive transaction alone wouldn't stop a second concurrent request from reading the same pre-reorder state. Reposition itself runs in **two phases** inside a single Prisma `$transaction` — first to negative placeholder positions, then to final positions — since the `@@unique([routineId, position])` constraint is checked per-statement (not deferred), so writing final positions directly would collide with whatever task currently holds that slot.
+- **Better Auth rate limiting uses Redis as `customStorage`, not `secondaryStorage`.** `secondaryStorage` is also consulted for session/verification-token caching, which would put PII into Redis; `customStorage` scopes Redis strictly to rate-limit counters for `/sign-in/email` and `/sign-up/email`.
+- **RabbitMQ event publishing is fire-and-forget.** `RoutineCreatedProducer.publish` is called after a routine is created and wrapped in try/catch purely to guard against a synchronous throw — a broker outage must never fail routine creation. The consumer (`RoutineCreatedConsumer`) runs in the same process via Nest's hybrid-microservice bootstrap (`app.connectMicroservice`/`startAllMicroservices` in `main.ts`), not a separate worker deployable.
+- **GCS uploads go through a temp file, not `file.save(buffer)`.** `GcpStorageService.uploadObject` writes the incoming buffer to disk and calls `bucket.upload()` instead — `file.save(buffer)`'s single `.end(buffer)` call reliably raced against `@google-cloud/storage`'s internal async upload-connection setup (`"Cannot call write after a stream was destroyed"`); `bucket.upload()` feeds the same pipeline via a backpressure-paced `fs.createReadStream`, avoiding it.
 
 ## Resources
 
@@ -262,3 +406,7 @@ Sessions and recordings are scoped to the requesting user: acting on another use
 - [Terminus health checks](https://docs.nestjs.com/recipes/terminus)
 - [Zod](https://zod.dev/)
 - [Better Auth](https://www.better-auth.com/docs)
+- [Prisma](https://www.prisma.io/docs)
+- [Redis](https://redis.io/docs/latest/)
+- [RabbitMQ](https://www.rabbitmq.com/docs) / [amqplib](https://github.com/amqp-node/amqplib)
+- [@google-cloud/storage](https://github.com/googleapis/nodejs-storage)

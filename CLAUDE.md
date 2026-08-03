@@ -2,9 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project state
+## Project overview
 
-This is a stock NestJS starter (generated via `@nestjs/cli`) with no application-specific code yet — `src/` only contains the default `AppModule` / `AppController` / `AppService`. Treat any architectural decisions as greenfield.
+Guitar Coach is a NestJS 11 (Express) backend for tracking guitar practice: users build **routines** from a shared **task** library, log **practice sessions**, and attach audio **recordings** stored in Google Cloud Storage. Auth is Better Auth (email/password, session cookies) via `@thallesp/nestjs-better-auth`. Data lives in Postgres via Prisma 7 (`@prisma/adapter-pg`). Redis backs three independent concerns (HTTP cache, a distributed lock, Better Auth rate limiting) and RabbitMQ carries one domain event (`routine.created`), consumed in the same process via a hybrid Nest microservice — there is no separate worker deployable. Full architecture diagram, ER diagram, and endpoint-by-endpoint curl walkthroughs live in `README.md`; this file is quick-reference guidance for working in the code, not a restatement of it.
+
+**Feature modules** (`src/`): `config` (Zod env validation), `health` (Terminus liveness/readiness), `auth` (Better Auth wiring + Redis rate-limit storage), `users`, `tasks` (Redis-cached reads), `routines` (+ `routines/events` for the RabbitMQ producer/consumer), `practice-sessions` (+ its `recordings` sub-module), `gcp-storage` (GCS wrapper), `prisma` (`PrismaService`), `redis` (`RedisLockService`).
 
 ## Commands
 
@@ -24,6 +26,17 @@ npm run test:e2e         # jest -c test/jest-e2e.json (matches *.e2e-spec.ts)
 # single test file
 npx jest src/app.controller.spec.ts
 npx jest -t "test name substring"
+
+# Prisma
+npx prisma generate      # regenerate Prisma Client into src/generated/prisma after a schema change
+npx prisma migrate dev   # create/apply a migration against DATABASE_URL
+npx prisma studio        # browse the database (http://localhost:5555)
+npx tsx prisma/seed.ts   # (re)run the idempotent dev seed script
+
+# Docker Compose (dev overlay — API + Postgres + Redis + RabbitMQ, hot reload)
+docker compose -f compose.yaml -f compose.dev.yaml up
+docker compose -f compose.yaml -f compose.dev.yaml build api   # rebuild after a Prisma schema or dependency change
+docker compose -f compose.yaml -f compose.prod.yaml up --build # production-shaped image
 ```
 
 ## Dependency management (IMPORTANT)
@@ -43,10 +56,32 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 
 ## Architecture notes
 
-- Standard Nest module/controller/service structure; `src/main.ts` bootstraps `AppModule` via `NestFactory`.
+- Standard Nest module/controller/service structure; `src/main.ts` bootstraps `AppModule` via `NestFactory`, then `app.connectMicroservice(...)` + `app.startAllMicroservices()` to run the RabbitMQ `routine.created` consumer in-process alongside HTTP — don't introduce a separate worker entrypoint for new async consumers, follow this same hybrid-bootstrap pattern.
+- A global `AuthGuard` (registered by `AuthModule.forRootAsync` in `app.module.ts`) protects every route by default — new controllers need a valid session automatically; opt out with `@AllowAnonymous()`, gate to admins with `@Roles(['admin'])`. Only `health/live`, `health/ready`, and `auth/*` are excluded from the global `${API_PREFIX}/${API_VERSION}` prefix.
 - Unit tests (`*.spec.ts`) live alongside the code they test in `src/`; Jest's `rootDir` is `src`. E2E tests (`*.e2e-spec.ts`) live in `test/` with their own Jest config (`test/jest-e2e.json`).
 - ESLint uses flat config (`eslint.config.mjs`) with `typescript-eslint` recommendedTypeChecked + `eslint-plugin-prettier`. Notable rule overrides: `no-explicit-any` off, `no-floating-promises` and `no-unsafe-argument` are `warn` not `error`.
 - TypeScript config targets ES2023, uses `nodenext` module resolution, and has `noImplicitAny: false` with `strictNullChecks: true` (not full `strict` mode).
+
+## Coding conventions to follow
+
+- **Validation**: request bodies/queries are DTO classes with `class-validator` decorators; the global `ValidationPipe` (`main.ts`) has `whitelist: true, forbidNonWhitelisted: true, transform: true` — unknown properties are rejected, not stripped-and-ignored. Partial-update DTOs use `PartialType()` (see `UpdateUserDto`/`UpdateTaskDto`), not hand-duplicated optional fields.
+- **Prisma error translation**: services catch Prisma's own error codes and rethrow as Nest HTTP exceptions rather than letting them leak — `P2025` (not found) → `NotFoundException`, `P2002` (unique violation) → `ConflictException`, `P2003` (FK violation, e.g. deleting a `Task` still referenced by a `RoutineTask`) → `ConflictException`/`NotFoundException` depending on context. There's no shared exception filter for this; each service does it locally via a small `isPrismaErrorCode` helper — match that pattern rather than adding a global filter.
+- **Ownership checks, not just auth**: every user-scoped resource (`routines`, `practice-sessions`, `recordings`) is fetched through a `findById(userId, id)`-style guard (or a Prisma `where: { id, userId }`) before any nested operation, and a missing/not-owned resource returns `404`, never `403` — this intentionally avoids leaking existence to non-owners. Follow this for any new user-scoped resource.
+- **Fail-open vs. fail-closed for infra dependencies**: Redis-backed cache (`tasks`) and Better Auth rate-limit storage catch their own errors and degrade silently (log + treat as a miss) — a Redis outage must never break a request. The routine-reorder distributed lock (`RedisLockService`) is the deliberate exception: lock-acquire failure returns `503`, because proceeding without the lock risks corrupting task ordering. When adding new Redis-backed features, default to fail-open unless correctness genuinely requires fail-closed like the lock does.
+- **Async domain events are fire-and-forget**: `RoutineCreatedProducer.publish(...)` is called after the DB write commits and wrapped in try/catch purely against a synchronous throw — a broker outage must never fail the HTTP request. Follow this pattern (publish after commit, never await-and-fail-on-publish-error) for any new event.
+- **Controllers stay thin**: business logic, ownership checks, and Prisma-error translation live in the service; controllers just wire DTOs/guards/decorators to service calls.
+
+## Key file pointers
+
+- `prisma/schema.prisma` — full data model (models, enums, relations); `prisma/seed.ts` — idempotent dev seed data.
+- `src/config/env.validation.ts` — the Zod schema that is the single source of truth for every environment variable; update this first when adding a new env var, then `.env.example`.
+- `src/prisma/prisma.service.ts` — the shared `PrismaService`/`PrismaModule` (`@Global()`); reuse this rather than instantiating `PrismaClient` elsewhere.
+- `src/auth/auth.ts` — Better Auth instance construction (plugins, rate limiting, email hooks); `src/auth/redis-rate-limit-storage.ts` — the Redis-backed rate-limit storage implementation.
+- `src/redis/redis-lock.service.ts` — the distributed lock used by `routines`; reuse it for any new feature needing mutual exclusion instead of adding a second lock implementation.
+- `src/gcp-storage/gcp-storage.service.ts` — the sole `@google-cloud/storage` wrapper (`@Global()`); reuse it rather than constructing a second `Storage` client. Note the temp-file-then-`bucket.upload()` upload path — don't revert to `file.save(buffer)` (see the comment in that file for why).
+- `src/routines/events/` — the RabbitMQ producer/consumer pattern (`*.producer.ts`/`*.consumer.ts`, shared queue-options constants) to copy for any new async domain event.
+- `.env.example` — annotated list of every environment variable; `compose.yaml` (base) + `compose.dev.yaml`/`compose.prod.yaml` (overlays) — Docker Compose service wiring.
+- `README.md` — architecture diagram, ER diagram, full endpoint list with curl examples; read this for "how does X work end-to-end" before re-deriving it from code.
 
 # Repository Working Instructions
 
