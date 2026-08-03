@@ -136,6 +136,38 @@ const SEED_ROUTINES: SeedRoutine[] = [
   },
 ];
 
+interface SeedPracticeSession {
+  userEmail: string;
+  title: string;
+  notes?: string;
+}
+
+const SEED_PRACTICE_SESSIONS: SeedPracticeSession[] = [
+  {
+    userEmail: 'admin@guitarcoach.dev',
+    title: 'Morning warm-up session',
+    notes: 'Focused on chromatic exercises and alternate picking.',
+  },
+  {
+    userEmail: 'alice@guitarcoach.dev',
+    title: 'Evening practice',
+    notes: 'Worked through barre chord transitions.',
+  },
+  {
+    userEmail: 'bob@guitarcoach.dev',
+    title: 'Technique session',
+  },
+  {
+    userEmail: 'carol@guitarcoach.dev',
+    title: 'Weekend practice',
+    notes: 'Ran through the 12-bar blues progression a few times.',
+  },
+  {
+    userEmail: 'dave@guitarcoach.dev',
+    title: 'Song study session',
+  },
+];
+
 if (!process.env.REDIS_URL) {
   throw new Error('REDIS_URL is not set. Add it to .env (see .env.example).');
 }
@@ -211,6 +243,29 @@ async function seedRoutine(
   });
 }
 
+async function seedPracticeSession(
+  seed: SeedPracticeSession,
+  userIdByEmail: Map<string, string>,
+): Promise<void> {
+  const userId = userIdByEmail.get(seed.userEmail);
+  if (!userId) {
+    throw new Error(
+      `Seed data error: no seeded user for email "${seed.userEmail}"`,
+    );
+  }
+
+  const existing = await prisma.practiceSession.findFirst({
+    where: { userId, title: seed.title },
+  });
+  if (existing) {
+    return;
+  }
+
+  await prisma.practiceSession.create({
+    data: { userId, title: seed.title, notes: seed.notes },
+  });
+}
+
 async function main(): Promise<void> {
   const users = await Promise.all(SEED_USERS.map(seedUser));
   const userIdByEmail = new Map(users.map((user) => [user.email, user.id]));
@@ -224,6 +279,11 @@ async function main(): Promise<void> {
     await seedRoutine(routineSeed, userIdByEmail, taskIdByTitle);
   }
   console.log(`Seeded ${SEED_ROUTINES.length} routines`);
+
+  for (const practiceSessionSeed of SEED_PRACTICE_SESSIONS) {
+    await seedPracticeSession(practiceSessionSeed, userIdByEmail);
+  }
+  console.log(`Seeded ${SEED_PRACTICE_SESSIONS.length} practice sessions`);
 }
 
 main()

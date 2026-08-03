@@ -5,8 +5,17 @@ services:
     environment:
       NODE_ENV: development
       START_COMMAND: npm run start:dev
+      # Overrides the host-path value of GOOGLE_APPLICATION_CREDENTIALS from
+      # compose.yaml — the container can't see host paths directly, so it
+      # must point at the in-container path the volume below mounts to.
+      GOOGLE_APPLICATION_CREDENTIALS: /usr/src/app/gcp-credentials.json
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      # Falls back to /dev/null (a harmless, always-valid bind-mount source)
+      # when GCP_CREDENTIALS_HOST_PATH isn't set, so the container still
+      # boots for anyone not exercising the recordings feature locally.
+      - ${GCP_CREDENTIALS_HOST_PATH:-/dev/null}:/usr/src/app/gcp-credentials.json:ro
     develop:
       watch:
         - action: sync
