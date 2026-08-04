@@ -25,7 +25,9 @@
     "test:e2e": "NODE_OPTIONS=--experimental-vm-modules jest --config ./test/jest-e2e.json",
     "prepare": "husky || true",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset"
+    "db:reset": "prisma migrate reset",
+    "weekly-routine-cleanup": "tsx src/weekly-routine-cleanup/main.ts",
+    "start:weekly-routine-cleanup": "node dist/src/weekly-routine-cleanup/main"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
