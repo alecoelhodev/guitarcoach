@@ -50,6 +50,8 @@ flowchart LR
 - **RabbitMQ** carries a single domain event today: `RoutineCreatedProducer` publishes `routine.created` (fire-and-forget — a broker outage must never fail routine creation) after `POST /routines`, consumed in-process by `RoutineCreatedConsumer`, currently just a logging placeholder for future side effects (notifications, analytics, etc.).
 - **Google Cloud Storage** stores practice recording bytes privately; only metadata (object name, content type, size) lives in Postgres. `GcpStorageService.uploadObject` writes incoming buffers to a short-lived temp file and uses `bucket.upload()` rather than `file.save(buffer)` — the latter reliably triggered a `"Cannot call write after a stream was destroyed"` race in the client library's internal write pipeline when the whole buffer was pushed before the async upload-request setup had settled; `bucket.upload()` feeds the same pipeline via a paced `fs.createReadStream`, avoiding the race.
 
+A fourth, fully separate process — the weekly routine cleanup job — runs outside this hybrid app entirely, on its own schedule; see [Weekly routine cleanup job](#weekly-routine-cleanup-job).
+
 ## User flow
 
 1. **Sign up / sign in** — email + password via Better Auth, session cookie issued (see [Authentication](#authentication)).
@@ -255,7 +257,8 @@ npx prisma generate      # regenerate Prisma Client into src/generated/prisma af
 npx prisma migrate dev   # create/apply a migration against DATABASE_URL
 npx prisma studio        # browse the database
 
-npm run weekly-routine-cleanup   # run the weekly routine cleanup job locally (see below)
+npm run weekly-routine-cleanup         # run the weekly routine cleanup job locally via tsx (see below)
+npm run start:weekly-routine-cleanup   # run the compiled dist/ build (requires `npm run build` first) — mirrors the deployed Cloud Run Job's entrypoint
 ```
 
 A Husky `pre-commit` hook checks `package-lock.json` stays in sync whenever `package.json` is staged.
@@ -401,16 +404,53 @@ A standalone, HTTP-less NestJS process (`src/weekly-routine-cleanup/`) that arch
 # Local run against your dev DATABASE_URL
 npm run weekly-routine-cleanup
 
-# One-time: let Docker push to Artifact Registry
+# --- One-time GCP project setup ---
+
+# Enable the APIs this job's deploy/schedule steps depend on
+gcloud services enable run.googleapis.com \
+  cloudscheduler.googleapis.com \
+  secretmanager.googleapis.com \
+  artifactregistry.googleapis.com \
+  --project=PROJECT_ID
+
+# Create the Artifact Registry repo images are pushed to (shared with the API
+# image below — same repo, same `api` image name, this job just overrides the
+# container command at deploy time).
+gcloud artifacts repositories create guitar-coach \
+  --repository-format=docker --location=REGION --project=PROJECT_ID
+
+# Let Docker push to Artifact Registry
 gcloud auth configure-docker REGION-docker.pkg.dev
+
+# Create the job's runtime service account (referenced by --service-account
+# below). No project-level IAM roles needed yet — it only needs read access
+# to the DATABASE_URL secret, granted next.
+gcloud iam service-accounts create weekly-routine-cleanup-job \
+  --project=PROJECT_ID \
+  --display-name="Weekly routine cleanup Cloud Run Job"
+
+# Store the production DATABASE_URL as a secret and grant the job's service
+# account access to it. Must exist before `gcloud run jobs create` below,
+# which references it via --set-secrets.
+printf '%s' "postgresql://USER:PASSWORD@HOST:5432/DB" | \
+  gcloud secrets create weekly-routine-cleanup-database-url \
+  --project=PROJECT_ID --data-file=-
+gcloud secrets add-iam-policy-binding weekly-routine-cleanup-database-url \
+  --project=PROJECT_ID \
+  --member="serviceAccount:weekly-routine-cleanup-job@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+# Network reachability from Cloud Run to wherever Postgres is hosted (Cloud
+# SQL private/public IP via a VPC connector or the Cloud SQL Auth Proxy, vs.
+# an externally hosted Postgres reachable over the public internet with SSL)
+# is a separate concern this repo doesn't prescribe — configure whatever the
+# chosen DATABASE_URL target actually requires.
 
 # Deploy as a Cloud Run Job using the SAME image/tag you already build and
 # push for the API — the job only overrides the container command below, so
 # there's no separate image to build. `--target production` is required (not
 # `development`): that stage is the only one that runs `npm run build`, so
-# it's the only one containing dist/ at all. This pushes to the `guitar-coach`
-# Artifact Registry repo created in the Phase 1 checklist, under image name
-# `api` — view it at console.cloud.google.com/artifacts or
+# it's the only one containing dist/ at all — view pushed tags at
+# console.cloud.google.com/artifacts or
 # `gcloud artifacts docker images list REGION-docker.pkg.dev/PROJECT_ID/guitar-coach`.
 # --platform linux/amd64 is required when building on Apple Silicon (or any
 # non-amd64 host) — Cloud Run only runs linux/amd64 images, and Docker
@@ -430,6 +470,17 @@ gcloud run jobs create weekly-routine-cleanup \
 
 # Run on demand, any time (safe — the job is idempotent)
 gcloud run jobs execute weekly-routine-cleanup --region=REGION
+
+# Create the identity Cloud Scheduler uses to invoke this job, and grant it
+# permission to invoke — scoped to this specific job, not project-wide.
+# Must happen after the job above exists.
+gcloud iam service-accounts create routine-cleanup-scheduler-invoker \
+  --project=PROJECT_ID \
+  --display-name="Cloud Scheduler invoker for weekly-routine-cleanup"
+gcloud run jobs add-iam-policy-binding weekly-routine-cleanup \
+  --region=REGION \
+  --member="serviceAccount:routine-cleanup-scheduler-invoker@PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
 
 # Schedule it for every Monday at 00:05 (must match ROUTINE_CLEANUP_TIME_ZONE's
 # time zone, or the job fires at the wrong local wall-clock time)
@@ -461,6 +512,7 @@ gcloud logging read 'resource.type=cloud_run_job AND resource.labels.job_name=we
 - **RabbitMQ event publishing is fire-and-forget.** `RoutineCreatedProducer.publish` is called after a routine is created and wrapped in try/catch purely to guard against a synchronous throw — a broker outage must never fail routine creation. The consumer (`RoutineCreatedConsumer`) runs in the same process via Nest's hybrid-microservice bootstrap (`app.connectMicroservice`/`startAllMicroservices` in `main.ts`), not a separate worker deployable.
 - **GCS uploads go through a temp file, not `file.save(buffer)`.** `GcpStorageService.uploadObject` writes the incoming buffer to disk and calls `bucket.upload()` instead — `file.save(buffer)`'s single `.end(buffer)` call reliably raced against `@google-cloud/storage`'s internal async upload-connection setup (`"Cannot call write after a stream was destroyed"`); `bucket.upload()` feeds the same pipeline via a backpressure-paced `fs.createReadStream`, avoiding it.
 - **Weekly routine cleanup is a standalone `createApplicationContext`, not a fourth hybrid-microservice consumer.** Unlike the RabbitMQ consumer (in-process alongside HTTP), this job boots its own minimal Nest module (`ConfigModule` + `PrismaModule` only) with no HTTP listener, deployed as a separate Cloud Run Job/Cloud Scheduler pair. It intentionally does not depend on `RoutinesModule` (which requires `RABBITMQ_URL`/`REDIS_URL` for its producer/lock deps this job has no use for) or the main `env.validation.ts` schema (which requires unrelated secrets like `BETTER_AUTH_SECRET`) — keeping its own env/IAM footprint to just `DATABASE_URL` and two job-specific vars.
+- **Weekly routine cleanup has no retry logic, by design.** `run()` does a single atomic `prisma.routine.updateMany` that's idempotent (once a routine flips to `archived` it no longer matches `status: active`), and the selection window (`createdAt < currentWeekStart`) is cumulative rather than "this week only" — so a failed or skipped run is always caught by the next scheduled run or an on-demand `gcloud run jobs execute`. The Cloud Run Job is deployed with `--max-retries=0` deliberately: since the job self-heals on the next run anyway, blind auto-retry would mostly just retry non-transient failures (bad `DATABASE_URL`, IAM misconfiguration) instead of surfacing them immediately in logs.
 
 ## Resources
 
