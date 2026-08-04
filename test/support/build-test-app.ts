@@ -9,11 +9,13 @@ import { GcpStorageService } from '../../src/gcp-storage/gcp-storage.service';
 import { PracticeSessionsModule } from '../../src/practice-sessions/practice-sessions.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { RedisLockModule } from '../../src/redis/redis-lock.module';
+import { ROUTINE_EVENTS_CLIENT } from '../../src/routines/events/rabbitmq.constants';
 import { RoutinesModule } from '../../src/routines/routines.module';
 import { TasksModule } from '../../src/tasks/tasks.module';
 import { UsersModule } from '../../src/users/users.module';
 import { FakeAuthGuard } from './fake-auth.guard';
 import { FakeGcpStorageService } from './fake-gcp-storage.service';
+import { FakeRoutineEventsClient } from './fake-routine-events-client';
 
 /**
  * Builds the same controller/service/Prisma wiring as AppModule, but swaps
@@ -36,6 +38,13 @@ import { FakeGcpStorageService } from './fake-gcp-storage.service';
  *
  * GcpStorageService is swapped for an in-memory FakeGcpStorageService so
  * e2e specs never make real GCS calls or need real bucket credentials.
+ *
+ * ROUTINE_EVENTS_CLIENT (the RabbitMQ ClientProxy RoutinesModule registers)
+ * is swapped for an in-memory FakeRoutineEventsClient so e2e specs never
+ * open a real AMQP connection — connecting lazily on the first emit() and
+ * then racing app.close() teardown was producing flaky "Channel ended"
+ * unhandled rejections from amqp-connection-manager, surfacing on whatever
+ * test happened to be running at the time.
  */
 export async function buildTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
@@ -54,6 +63,8 @@ export async function buildTestApp(): Promise<INestApplication<App>> {
   })
     .overrideProvider(GcpStorageService)
     .useClass(FakeGcpStorageService)
+    .overrideProvider(ROUTINE_EVENTS_CLIENT)
+    .useClass(FakeRoutineEventsClient)
     .compile();
 
   const app = moduleFixture.createNestApplication<INestApplication<App>>();
