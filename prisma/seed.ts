@@ -37,6 +37,7 @@ interface SeedTask {
   category: TaskCategory;
   difficulty: TaskDifficulty;
   description?: string;
+  referenceLink?: string;
 }
 
 const SEED_TASKS: SeedTask[] = [
@@ -77,6 +78,51 @@ const SEED_TASKS: SeedTask[] = [
     title: 'Learn a full song from tab',
     category: 'repertoire',
     difficulty: 'hard',
+  },
+  {
+    title: "Bullet for My Valentine - 'Tears Don't Fall' main riff",
+    category: 'technique',
+    difficulty: 'medium',
+    description:
+      'Learn the main riff in Drop C# (C# G# C# F# A# D#). Focus on tight palm-muted eighth notes on the low C# string and clean power-chord shifts. Start around 60% tempo with a metronome.',
+    referenceLink:
+      'https://www.youtube.com/results?search_query=Bullet+For+My+Valentine+Tears+Dont+Fall',
+  },
+  {
+    title: "Bullet for My Valentine - 'Hand of Blood' opening riff",
+    category: 'technique',
+    difficulty: 'medium',
+    description:
+      'Work the opening riff in Drop C#. Practice fast down-picked palm mutes and the pinch-harmonic accents; keep the picking hand relaxed to sustain speed.',
+    referenceLink:
+      'https://www.youtube.com/results?search_query=Bullet+For+My+Valentine+Hand+of+Blood',
+  },
+  {
+    title: "Killswitch Engage - 'My Curse' main riff",
+    category: 'repertoire',
+    difficulty: 'hard',
+    description:
+      'Learn this riff in Drop C#. Focus on syncopated gallop rhythms and quick position shifts across the low strings; count the off-beats out loud while practicing.',
+    referenceLink:
+      'https://www.youtube.com/results?search_query=Killswitch+Engage+My+Curse',
+  },
+  {
+    title: "All That Remains - 'This Calling' verse riff",
+    category: 'technique',
+    difficulty: 'hard',
+    description:
+      'Drill the verse riff in Drop C#. Emphasis on alternate-picking accuracy at speed and muting string noise between notes. Build tempo in 5 BPM increments.',
+    referenceLink:
+      'https://www.youtube.com/results?search_query=All+That+Remains+This+Calling',
+  },
+  {
+    title: "As I Lay Dying - 'Nothing Left' intro riff",
+    category: 'repertoire',
+    difficulty: 'hard',
+    description:
+      'Learn the intro riff in Drop C#. Focus on chugging low-string rhythm locked to the kick pattern and clean transitions to the open C#.',
+    referenceLink:
+      'https://www.youtube.com/results?search_query=As+I+Lay+Dying+Nothing+Left',
   },
 ];
 
