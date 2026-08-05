@@ -25,6 +25,7 @@ CMD ["npm", "run", "start:dev"]
 # ---- build: compiles TypeScript -> dist/ ----
 FROM dependencies AS build
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 # ---- production: minimal runtime image ----
