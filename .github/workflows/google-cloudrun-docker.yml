@@ -38,7 +38,7 @@ env:
   PROJECT_ID: 'guitar-coach-504400' # TODO: update to your Google Cloud project ID
   REGION: 'us-east1' # TODO: update to your region
   SERVICE: 'guitarcoach' # TODO: update to your service name
-  WORKLOAD_IDENTITY_PROVIDER: 'projects/685026468764/locations/global/workloadIdentityPools/github/subject/guitarcoach' # TODO: update to your workload identity provider
+  WORKLOAD_IDENTITY_PROVIDER: 'projects/685026468764/locations/global/workloadIdentityPools/github/providers/guitarcoach' # TODO: update to your workload identity provider
 
 jobs:
   deploy:
