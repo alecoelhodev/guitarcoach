@@ -90,9 +90,12 @@ jobs:
           # NOTE: If using a pre-built image, update the image name below:
 
           image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }}'
-          # Dedicated least-privilege runtime SA + Cloud SQL connector — no
-          # dedicated action input for either, so both go through `flags`.
-          flags: '--service-account=guitarcoach-api-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:guitar-coach-db'
+          # Dedicated least-privilege runtime SA, Cloud SQL connector, and
+          # public invocation — none have a dedicated action input, so all
+          # three go through `flags`. --allow-unauthenticated lets requests
+          # reach the service at all; the app's own global AuthGuard (Better
+          # Auth) remains the real per-route authorization boundary.
+          flags: '--service-account=guitarcoach-api-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:guitar-coach-db --allow-unauthenticated'
           env_vars: |-
             NODE_ENV=production
             GCP_PROJECT_ID=${{ env.PROJECT_ID }}
