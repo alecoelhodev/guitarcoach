@@ -103,6 +103,10 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 - Don't drop explicit `@Inject(Token)` constructor parameters in a `tsx`-bootstrapped standalone entrypoint once any parameter has a generic type argument — esbuild silently breaks metadata-based DI for the whole constructor in that case.
 - Don't disable auth/CSRF/CORS/CSP/TLS as a default, and don't skip git hooks (`--no-verify`) to unblock a commit — fix the root cause instead.
 
+## Roadmap (future intent, not started)
+
+- **Infrastructure as Code.** Every GCP resource behind the API's CI/CD (Artifact Registry repo, IAM bindings, the `guitarcoach-api-runtime` service account, Secret Manager secrets, the Cloud SQL connection, the Cloud Run service itself — see `README.md`'s "Continuous deployment" section) was provisioned by hand via one-off `gcloud` commands, not tracked in code. The user wants to eventually manage this as Terraform (the `google` provider maps directly onto everything already provisioned) so the whole stack can be declaratively provisioned or torn down. This is a stated future intent only — nothing has been started, and no Terraform files exist. Don't scaffold this unprompted; wait to be asked, since it involves deciding whether Terraform should also own stateful resources like the Cloud SQL instance/data (risky to model if `destroy` is ever run).
+
 ## Key file pointers
 
 - `prisma/schema.prisma` — full data model (models, enums, relations); `prisma/seed.ts` — idempotent dev seed data.
