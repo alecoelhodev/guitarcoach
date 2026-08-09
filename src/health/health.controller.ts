@@ -4,8 +4,10 @@ import {
   HealthCheck,
   HealthCheckService,
   MemoryHealthIndicator,
+  PrismaHealthIndicator,
 } from '@nestjs/terminus';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
+import { PrismaService } from '../prisma/prisma.service';
 
 const HEAP_THRESHOLD_BYTES = 300 * 1024 * 1024;
 const RSS_THRESHOLD_BYTES = 300 * 1024 * 1024;
@@ -17,6 +19,8 @@ export class HealthController {
     private readonly health: HealthCheckService,
     private readonly memory: MemoryHealthIndicator,
     private readonly disk: DiskHealthIndicator,
+    private readonly db: PrismaHealthIndicator,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('live')
@@ -38,6 +42,7 @@ export class HealthController {
           path: '/',
           thresholdPercent: DISK_THRESHOLD_PERCENT,
         }),
+      () => this.db.pingCheck('database', this.prisma),
     ]);
   }
 }

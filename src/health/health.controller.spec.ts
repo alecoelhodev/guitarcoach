@@ -4,7 +4,9 @@ import {
   HealthCheckService,
   HealthIndicatorFunction,
   MemoryHealthIndicator,
+  PrismaHealthIndicator,
 } from '@nestjs/terminus';
+import { PrismaService } from '../prisma/prisma.service';
 import { HealthController } from './health.controller';
 
 describe('HealthController', () => {
@@ -15,6 +17,8 @@ describe('HealthController', () => {
     checkRSS: jest.Mock;
   };
   let diskHealthIndicator: { checkStorage: jest.Mock };
+  let prismaHealthIndicator: { pingCheck: jest.Mock };
+  let prismaService: PrismaService;
 
   beforeEach(async () => {
     healthCheckService = {
@@ -29,6 +33,10 @@ describe('HealthController', () => {
     diskHealthIndicator = {
       checkStorage: jest.fn().mockResolvedValue({ disk: { status: 'up' } }),
     };
+    prismaHealthIndicator = {
+      pingCheck: jest.fn().mockResolvedValue({ database: { status: 'up' } }),
+    };
+    prismaService = {} as PrismaService;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
@@ -36,6 +44,8 @@ describe('HealthController', () => {
         { provide: HealthCheckService, useValue: healthCheckService },
         { provide: MemoryHealthIndicator, useValue: memoryHealthIndicator },
         { provide: DiskHealthIndicator, useValue: diskHealthIndicator },
+        { provide: PrismaHealthIndicator, useValue: prismaHealthIndicator },
+        { provide: PrismaService, useValue: prismaService },
       ],
     }).compile();
 
@@ -51,10 +61,11 @@ describe('HealthController', () => {
   });
 
   describe('readiness', () => {
-    it('checks heap, RSS, and disk usage', async () => {
+    it('checks heap, RSS, disk usage, and database connectivity', async () => {
       await controller.readiness();
 
       expect(healthCheckService.check).toHaveBeenCalledWith([
+        expect.any(Function),
         expect.any(Function),
         expect.any(Function),
         expect.any(Function),
@@ -77,6 +88,10 @@ describe('HealthController', () => {
         path: '/',
         thresholdPercent: 0.9,
       });
+      expect(prismaHealthIndicator.pingCheck).toHaveBeenCalledWith(
+        'database',
+        prismaService,
+      );
     });
   });
 });
