@@ -3,6 +3,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { App } from 'supertest/types';
+import { AiPracticePlannerModule } from '../../src/ai-practice-planner/ai-practice-planner.module';
+import { AI_PROVIDER } from '../../src/ai-practice-planner/openai/openai.constants';
 import { AppConfigModule } from '../../src/config/app-config.module';
 import { GcpStorageModule } from '../../src/gcp-storage/gcp-storage.module';
 import { GcpStorageService } from '../../src/gcp-storage/gcp-storage.service';
@@ -13,6 +15,7 @@ import { ROUTINE_EVENTS_CLIENT } from '../../src/routines/events/rabbitmq.consta
 import { RoutinesModule } from '../../src/routines/routines.module';
 import { TasksModule } from '../../src/tasks/tasks.module';
 import { UsersModule } from '../../src/users/users.module';
+import { FakeAiProvider } from './fake-ai-provider';
 import { FakeAuthGuard } from './fake-auth.guard';
 import { FakeGcpStorageService } from './fake-gcp-storage.service';
 import { FakeRoutineEventsClient } from './fake-routine-events-client';
@@ -45,6 +48,10 @@ import { FakeRoutineEventsClient } from './fake-routine-events-client';
  * then racing app.close() teardown was producing flaky "Channel ended"
  * unhandled rejections from amqp-connection-manager, surfacing on whatever
  * test happened to be running at the time.
+ *
+ * AI_PROVIDER (AiPracticePlannerModule's OpenAI seam) is swapped for an
+ * in-memory FakeAiProvider so e2e specs never call the real OpenAI API or
+ * need an OPENAI_API_KEY.
  */
 export async function buildTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
@@ -58,6 +65,7 @@ export async function buildTestApp(): Promise<INestApplication<App>> {
       TasksModule,
       RoutinesModule,
       PracticeSessionsModule,
+      AiPracticePlannerModule,
     ],
     providers: [{ provide: APP_GUARD, useClass: FakeAuthGuard }],
   })
@@ -65,6 +73,8 @@ export async function buildTestApp(): Promise<INestApplication<App>> {
     .useClass(FakeGcpStorageService)
     .overrideProvider(ROUTINE_EVENTS_CLIENT)
     .useClass(FakeRoutineEventsClient)
+    .overrideProvider(AI_PROVIDER)
+    .useClass(FakeAiProvider)
     .compile();
 
   const app = moduleFixture.createNestApplication<INestApplication<App>>();
