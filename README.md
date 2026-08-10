@@ -15,12 +15,13 @@ The project is a standard NestJS application (Express platform) organized by fea
 - **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination and filtering by `category`/`difficulty`, Redis-cached reads (see [Data model](#data-model)).
 - **`routines`** — user-owned, ordered lists of tasks with per-task target durations; supports reordering under a Redis distributed lock, and publishes a `routine.created` event to RabbitMQ (see [Routines](#routines)).
 - **`practice-sessions`** — user practice logs with attached audio recordings uploaded to Google Cloud Storage (see [Practice recordings](#practice-recordings)).
+- **`ai-practice-planner`** — generates a structured practice-routine plan from a natural-language prompt via the OpenAI Responses API, then persists it through the existing `routines`/`tasks` services once the user explicitly confirms (see [AI Practice Planner](#ai-practice-planner)).
 - **`gcp-storage`** — thin wrapper around [`@google-cloud/storage`](https://github.com/googleapis/nodejs-storage) used by `practice-sessions` to upload/delete objects and mint signed download URLs (see [Architecture](#architecture)).
 - **`prisma`** — `PrismaService`/`PrismaModule` wiring Prisma ORM to Postgres (see [Architecture decisions](#architecture-decisions)).
 
 Cross-cutting infra (not feature modules, but wired globally in `AppModule`): a Redis-backed HTTP response cache, a Redis distributed lock, Redis-backed Better Auth rate-limit storage, and a self-consumed RabbitMQ queue for domain events (see [Architecture](#architecture)).
 
-**Tech stack**: NestJS 11 (Express), TypeScript, Prisma 7 with the `@prisma/adapter-pg` driver adapter, Postgres 17, Better Auth 1.6, Redis 8, RabbitMQ 4, Google Cloud Storage, Zod (config validation), class-validator/class-transformer (request DTOs), Jest (unit + e2e).
+**Tech stack**: NestJS 11 (Express), TypeScript, Prisma 7 with the `@prisma/adapter-pg` driver adapter, Postgres 17, Better Auth 1.6, Redis 8, RabbitMQ 4, Google Cloud Storage, the OpenAI Node SDK (Responses API), Zod (config validation), class-validator/class-transformer (request DTOs), Jest (unit + e2e).
 
 API docs are served by Swagger UI at `/docs` once the app is running (covers the Nest-controller routes below; Better Auth's own `/auth/*` endpoints aren't introspectable by Swagger — see [Authentication](#authentication)).
 
@@ -43,12 +44,14 @@ flowchart LR
     http -->|"emit routine.created"| rabbitmq{{"RabbitMQ 4"}}
     rabbitmq -->|"consume routine.created"| consumer
     http -->|"upload / signed URL"| gcs[("Google Cloud Storage")]
+    http -->|"structured plan / tool call"| openai{{"OpenAI Responses API"}}
 ```
 
 - **Postgres** is the system of record for everything (via Prisma). Every other piece of infra below is a supporting concern the app can degrade gracefully without.
 - **Redis** backs three independent concerns, each with its own key namespace: an HTTP response cache for `GET /tasks*` (`TasksService`, via `@nestjs/cache-manager` + Keyv), a distributed lock guarding routine task-reordering (`RedisLockService`, `SET NX PX` + Lua compare-and-delete release), and rate-limit counters for Better Auth's `/sign-in/email`/`/sign-up/email` (`RedisRateLimitStorage`, wired as Better Auth's `customStorage` rather than `secondaryStorage` so session/verification data never lands in Redis). All three **fail open** — a Redis outage degrades to "no cache"/"no rate limit" rather than an outage, except the distributed lock, which fails closed (`503`) since reordering without it could corrupt task ordering.
 - **RabbitMQ** carries a single domain event today: `RoutineCreatedProducer` publishes `routine.created` (fire-and-forget — a broker outage must never fail routine creation) after `POST /routines`, consumed in-process by `RoutineCreatedConsumer`, currently just a logging placeholder for future side effects (notifications, analytics, etc.).
 - **Google Cloud Storage** stores practice recording bytes privately; only metadata (object name, content type, size) lives in Postgres. `GcpStorageService.uploadObject` writes incoming buffers to a short-lived temp file and uses `bucket.upload()` rather than `file.save(buffer)` — the latter reliably triggered a `"Cannot call write after a stream was destroyed"` race in the client library's internal write pipeline when the whole buffer was pushed before the async upload-request setup had settled; `bucket.upload()` feeds the same pipeline via a paced `fs.createReadStream`, avoiding the race.
+- **OpenAI Responses API** turns a natural-language prompt into a structured practice plan (Structured Outputs), optionally using OpenAI's built-in `web_search` tool when the model decides external information would help — never required. The `create_routine` custom tool that actually persists the routine is only ever included in the *second*, post-confirmation request to OpenAI; the model has no way to call it before the user confirms, because the tool definition simply isn't there yet. See [AI Practice Planner](#ai-practice-planner).
 
 A fourth, fully separate process — the weekly routine cleanup job — runs outside this hybrid app entirely, on its own schedule; see [Weekly routine cleanup job](#weekly-routine-cleanup-job).
 
@@ -58,7 +61,7 @@ For a request-by-request walkthrough of these mechanisms — authentication, a c
 
 1. **Sign up / sign in** — email + password via Better Auth, session cookie issued (see [Authentication](#authentication)).
 2. **Browse the task library** — `GET /tasks`, optionally filtered by `category`/`difficulty` (see [Data model](#data-model)).
-3. **Build a routine** — create a routine and attach tasks to it in order, with optional per-task target durations; reorder as needed (see [Routines](#routines)).
+3. **Build a routine** — create a routine and attach tasks to it in order, with optional per-task target durations; reorder as needed (see [Routines](#routines)). Or describe what you want in natural language and let the AI Practice Planner draft one for you, subject to your explicit confirmation before anything is saved (see [AI Practice Planner](#ai-practice-planner)).
 4. **Log a practice session** — create a practice session, optionally against a routine you followed (see [Practice recordings](#practice-recordings)).
 5. **Upload a recording** — attach an audio recording of that session to Google Cloud Storage.
 6. **Review later** — list a session's recordings and fetch a time-limited signed download URL for playback.
@@ -236,6 +239,9 @@ Validated in `src/config/env.validation.ts`; the app fails fast on startup if re
 | `GCP_CREDENTIALS_HOST_PATH` | Docker Compose only | — | Same absolute host path as above; `compose.dev.yaml` bind-mounts it read-only into the container and points `GOOGLE_APPLICATION_CREDENTIALS` at the in-container path for you |
 | `RECORDING_UPLOAD_MAX_SIZE_BYTES` | no | `52428800` (50MB) | Max accepted size for a single practice recording upload |
 | `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS` | no | `900` | How long a `GET .../download-url` signed URL stays valid |
+| `OPENAI_API_KEY` | yes | — | OpenAI API key used server-side only by `OpenAiResponsesService`; never exposed to clients |
+| `OPENAI_MODEL` | yes | — | Model used for Responses API calls (structured outputs, `web_search`, `create_routine`); not hardcoded in code |
+| `OPENAI_REQUEST_TIMEOUT_MS` | no | `30000` | Per-request timeout for calls to the OpenAI Responses API |
 
 See `.env.example` for the full annotated list.
 
@@ -391,6 +397,37 @@ curl -i -b cookies.txt -X DELETE http://localhost:3000/api/v1/recordings/<record
 The download URL returned by `/recordings/:id/download-url` expires after `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS` (default 900s / 15 minutes) — request a fresh one if it lapses.
 
 Sessions and recordings are scoped to the requesting user: acting on another user's session or recording returns `404 Not Found` (not `403`), so existence isn't leaked to non-owners.
+
+## AI Practice Planner
+
+Describe the routine you want in plain language and get back a structured plan via the [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) — nothing is saved until you explicitly confirm it. A single endpoint, `POST /api/v1/ai/practice-planner`, handles both steps of the exchange. Requires `OPENAI_API_KEY`/`OPENAI_MODEL` to be set (see [Environment variables](#environment-variables)).
+
+```bash
+# 1. Ask for a plan — returns a structured plan and a previousResponseId, nothing is persisted yet
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/ai/practice-planner \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"Create me a 30-minute blues routine focused on bending and improvisation."}'
+# => { "status": "awaiting_confirmation", "plan": { "title": ..., "tasks": [...] }, "previousResponseId": "resp_..." }
+
+# 2a. Confirm — persists the routine and its tasks through the existing routines/tasks services
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/ai/practice-planner \
+  -H 'Content-Type: application/json' \
+  -d '{"confirmation":true,"previousResponseId":"resp_..."}'
+# => { "status": "created", "routine": { "routineId": "...", "title": "...", "taskCount": 3 } }
+
+# 2b. Decline — persists nothing at all
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/ai/practice-planner \
+  -H 'Content-Type: application/json' \
+  -d '{"confirmation":false,"previousResponseId":"resp_..."}'
+# => { "status": "cancelled" }
+```
+
+Notes:
+
+- The authenticated user ID always comes from the session cookie, never from the request body — the model has no way to supply or override it. Confirming a `previousResponseId` that isn't yours (or has expired) returns `404 Not Found`, same non-leaking convention as every other user-scoped resource.
+- OpenAI's built-in `web_search` tool is available to the model but optional — it's only used when the model decides external information would improve the plan, not on every request.
+- The plan is validated twice before anything is written: once by the Responses API's Structured Outputs schema, and again by application code (at least one task, positive durations, task durations reasonably summing to the requested total) — model output is never trusted blindly.
+- OpenAI timeouts/outages map to `504`/`503` and never affect any other endpoint; a malformed or unexpected model response maps to `502`.
 
 ## Weekly routine cleanup job
 
@@ -628,6 +665,8 @@ gcloud run services add-iam-policy-binding SERVICE_NAME \
 - **RabbitMQ event publishing is fire-and-forget.** `RoutineCreatedProducer.publish` is called after a routine is created and wrapped in try/catch purely to guard against a synchronous throw — a broker outage must never fail routine creation. The consumer (`RoutineCreatedConsumer`) runs in the same process via Nest's hybrid-microservice bootstrap (`app.connectMicroservice`/`startAllMicroservices` in `main.ts`), not a separate worker deployable.
 - **GCS uploads go through a temp file, not `file.save(buffer)`.** `GcpStorageService.uploadObject` writes the incoming buffer to disk and calls `bucket.upload()` instead — `file.save(buffer)`'s single `.end(buffer)` call reliably raced against `@google-cloud/storage`'s internal async upload-connection setup (`"Cannot call write after a stream was destroyed"`); `bucket.upload()` feeds the same pipeline via a backpressure-paced `fs.createReadStream`, avoiding it.
 - **Weekly routine cleanup is a standalone `createApplicationContext`, not a fourth hybrid-microservice consumer.** Unlike the RabbitMQ consumer (in-process alongside HTTP), this job boots its own minimal Nest module (`ConfigModule` + `PrismaModule` only) with no HTTP listener, deployed as a separate Cloud Run Job/Cloud Scheduler pair. It intentionally does not depend on `RoutinesModule` (which requires `RABBITMQ_URL`/`REDIS_URL` for its producer/lock deps this job has no use for) or the main `env.validation.ts` schema (which requires unrelated secrets like `BETTER_AUTH_SECRET`) — keeping its own env/IAM footprint to just `DATABASE_URL` and two job-specific vars.
+- **AI Practice Planner: OpenAI wrapped behind a swappable `AiProvider` seam.** `OpenAiResponsesService` (`src/ai-practice-planner/openai/`) is the sole caller of the `openai` SDK, bound behind an `AiProvider` interface via the `AI_PROVIDER` DI token — e2e tests swap in a `FakeAiProvider` the same way `GcpStorageService`/`ROUTINE_EVENTS_CLIENT` are swapped above. The `create_routine` custom tool is only ever included in the *second*, post-confirmation Responses API request — the model architecturally cannot call it before the user confirms, which is the actual enforcement of "don't persist without confirmation," not a prompt instruction.
+- **AI-planned tasks always create a new `Task` row; the plan-ownership cache is fail-closed.** Rather than fuzzy-matching an AI-generated task against the existing task library, `CreateRoutineTool` always creates a fresh `Task` — simpler and more predictable, at the cost of the library accumulating near-duplicates over time. Separately, the Redis-cached binding between a plan's `previousResponseId` and the user who requested it is read fail-closed on confirmation (any cache error, miss, or mismatch → `404`) — unlike `TasksService`'s fail-open cache reads, since this one is an authorization check, not a performance optimization (same rationale as the fail-closed reorder lock above).
 - **Weekly routine cleanup has no retry logic, by design.** `run()` does a single atomic `prisma.routine.updateMany` that's idempotent (once a routine flips to `archived` it no longer matches `status: active`), and the selection window (`createdAt < currentWeekStart`) is cumulative rather than "this week only" — so a failed or skipped run is always caught by the next scheduled run or an on-demand `gcloud run jobs execute`. The Cloud Run Job is deployed with `--max-retries=0` deliberately: since the job self-heals on the next run anyway, blind auto-retry would mostly just retry non-transient failures (bad `DATABASE_URL`, IAM misconfiguration) instead of surfacing them immediately in logs.
 
 ## Resources
@@ -640,3 +679,4 @@ gcloud run services add-iam-policy-binding SERVICE_NAME \
 - [Redis](https://redis.io/docs/latest/)
 - [RabbitMQ](https://www.rabbitmq.com/docs) / [amqplib](https://github.com/amqp-node/amqplib)
 - [@google-cloud/storage](https://github.com/googleapis/nodejs-storage)
+- [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) / [OpenAI Node SDK](https://github.com/openai/openai-node)
