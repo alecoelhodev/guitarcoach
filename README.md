@@ -52,6 +52,8 @@ flowchart LR
 
 A fourth, fully separate process — the weekly routine cleanup job — runs outside this hybrid app entirely, on its own schedule; see [Weekly routine cleanup job](#weekly-routine-cleanup-job).
 
+For a request-by-request walkthrough of these mechanisms — authentication, a core write, a cached read, and the async domain event — see [Request flows](docs/flows.md).
+
 ## User flow
 
 1. **Sign up / sign in** — email + password via Better Auth, session cookie issued (see [Authentication](#authentication)).
