@@ -98,6 +98,14 @@ export class TasksService {
     return result;
   }
 
+  // Deliberately uncached and separate from the paginated, Redis-cached
+  // findAll() used by the public GET /tasks endpoint -- this is an
+  // internal/tool-only listing (the task catalog is small), so a second
+  // cache-key shape for one caller isn't worth it.
+  findAllUnpaginated(): Promise<Task[]> {
+    return this.prisma.task.findMany({ orderBy: { createdAt: 'desc' } });
+  }
+
   async findById(id: string): Promise<Task> {
     const cacheKey = this.taskCacheKey(id);
     const cached = await this.safeCacheGet<Task>(cacheKey);

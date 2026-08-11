@@ -43,6 +43,10 @@ export type RoutineTaskWithTask = Prisma.RoutineTaskGetPayload<{
   include: { task: true };
 }>;
 
+export type RoutineWithTasks = Prisma.RoutineGetPayload<{
+  include: { routineTasks: { include: { task: true } } };
+}>;
+
 function isPrismaErrorCode(
   error: unknown,
   code: string,
@@ -123,6 +127,18 @@ export class RoutinesService {
     }
 
     return routine;
+  }
+
+  findRecent(userId: string, days: number): Promise<RoutineWithTasks[]> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    return this.prisma.routine.findMany({
+      where: { userId, createdAt: { gte: cutoff } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        routineTasks: { include: { task: true }, orderBy: { position: 'asc' } },
+      },
+    });
   }
 
   async update(

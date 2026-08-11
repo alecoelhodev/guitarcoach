@@ -256,6 +256,36 @@ describe('RoutinesService', () => {
     });
   });
 
+  describe('findRecent', () => {
+    it('scopes results to the owning user within the lookback window, tasks ordered by position', async () => {
+      const routines = [
+        {
+          ...buildRoutine(),
+          routineTasks: [
+            { ...buildRoutineTask({ position: 1 }), task: buildTask() },
+          ],
+        },
+      ];
+      prisma.routine.findMany.mockResolvedValue(routines);
+
+      const result = await service.findRecent(USER_ID, 14);
+
+      const firstCallArgs = prisma.routine.findMany.mock.calls[0] as unknown[];
+      const call = firstCallArgs[0] as {
+        where: { userId: string; createdAt: { gte: Date } };
+        orderBy: unknown;
+        include: unknown;
+      };
+      expect(call.where.userId).toBe(USER_ID);
+      expect(call.where.createdAt.gte).toBeInstanceOf(Date);
+      expect(call.orderBy).toEqual({ createdAt: 'desc' });
+      expect(call.include).toEqual({
+        routineTasks: { include: { task: true }, orderBy: { position: 'asc' } },
+      });
+      expect(result).toEqual(routines);
+    });
+  });
+
   describe('update', () => {
     it('updates only a routine owned by the user', async () => {
       const updated = buildRoutine({ status: 'archived' });

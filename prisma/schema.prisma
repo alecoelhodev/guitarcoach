@@ -46,7 +46,8 @@ model Task {
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
-  routineTasks RoutineTask[]
+  routineTasks         RoutineTask[]
+  practiceSessionTasks PracticeSessionTask[]
 
   @@map("tasks")
 }
@@ -130,8 +131,9 @@ model Routine {
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
 
-  user         User          @relation(fields: [userId], references: [id])
-  routineTasks RoutineTask[]
+  user             User              @relation(fields: [userId], references: [id])
+  routineTasks     RoutineTask[]
+  practiceSessions PracticeSession[]
 
   @@map("routines")
 }
@@ -155,15 +157,33 @@ model RoutineTask {
 model PracticeSession {
   id        String   @id @default(uuid()) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
+  routineId String?  @map("routine_id") @db.Uuid
   title     String?  @db.VarChar
   notes     String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user       User        @relation(fields: [userId], references: [id])
-  recordings Recording[]
+  user         User                  @relation(fields: [userId], references: [id])
+  routine      Routine?              @relation(fields: [routineId], references: [id])
+  recordings   Recording[]
+  sessionTasks PracticeSessionTask[]
 
   @@map("practice_sessions")
+}
+
+model PracticeSessionTask {
+  practiceSessionId String   @map("practice_session_id") @db.Uuid
+  taskId            String   @map("task_id") @db.Uuid
+  durationMinutes   Int?     @map("duration_minutes")
+  completed         Boolean  @default(false)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  practiceSession PracticeSession @relation(fields: [practiceSessionId], references: [id])
+  task            Task            @relation(fields: [taskId], references: [id])
+
+  @@id([practiceSessionId, taskId])
+  @@map("practice_session_tasks")
 }
 
 model Recording {

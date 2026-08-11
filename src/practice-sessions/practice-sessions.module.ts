@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { EnvironmentVariables } from '../config/env.validation';
+import { RoutinesModule } from '../routines/routines.module';
 import { PracticeSessionsController } from './practice-sessions.controller';
 import { PracticeSessionsService } from './practice-sessions.service';
 import { recordingFileFilter } from './recordings/recording-file-filter';
@@ -11,6 +12,7 @@ import { RecordingsService } from './recordings/recordings.service';
 
 @Module({
   imports: [
+    RoutinesModule,
     MulterModule.registerAsync({
       inject: [ConfigService],
       useFactory: (
@@ -28,5 +30,6 @@ import { RecordingsService } from './recordings/recordings.service';
   ],
   controllers: [PracticeSessionsController, RecordingsController],
   providers: [PracticeSessionsService, RecordingsService],
+  exports: [PracticeSessionsService],
 })
 export class PracticeSessionsModule {}

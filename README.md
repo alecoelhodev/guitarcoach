@@ -16,12 +16,13 @@ The project is a standard NestJS application (Express platform) organized by fea
 - **`routines`** — user-owned, ordered lists of tasks with per-task target durations; supports reordering under a Redis distributed lock, and publishes a `routine.created` event to RabbitMQ (see [Routines](#routines)).
 - **`practice-sessions`** — user practice logs with attached audio recordings uploaded to Google Cloud Storage (see [Practice recordings](#practice-recordings)).
 - **`ai-practice-planner`** — generates a structured practice-routine plan from a natural-language prompt via the OpenAI Responses API, then persists it through the existing `routines`/`tasks` services once the user explicitly confirms (see [AI Practice Planner](#ai-practice-planner)).
+- **`ai-routine-coach`** — a single tool-calling `RoutineCoachAgent` (built on the [`@openai/agents`](https://github.com/openai/openai-agents-js) SDK) that inspects a user's recent practice sessions/routines/tasks, decides for itself which of those to look at, and creates a routine directly — no confirmation step. Gated by a native SDK input guardrail (see [AI Routine Coach](#ai-routine-coach)).
 - **`gcp-storage`** — thin wrapper around [`@google-cloud/storage`](https://github.com/googleapis/nodejs-storage) used by `practice-sessions` to upload/delete objects and mint signed download URLs (see [Architecture](#architecture)).
 - **`prisma`** — `PrismaService`/`PrismaModule` wiring Prisma ORM to Postgres (see [Architecture decisions](#architecture-decisions)).
 
 Cross-cutting infra (not feature modules, but wired globally in `AppModule`): a Redis-backed HTTP response cache, a Redis distributed lock, Redis-backed Better Auth rate-limit storage, and a self-consumed RabbitMQ queue for domain events (see [Architecture](#architecture)).
 
-**Tech stack**: NestJS 11 (Express), TypeScript, Prisma 7 with the `@prisma/adapter-pg` driver adapter, Postgres 17, Better Auth 1.6, Redis 8, RabbitMQ 4, Google Cloud Storage, the OpenAI Node SDK (Responses API), Zod (config validation), class-validator/class-transformer (request DTOs), Jest (unit + e2e).
+**Tech stack**: NestJS 11 (Express), TypeScript, Prisma 7 with the `@prisma/adapter-pg` driver adapter, Postgres 17, Better Auth 1.6, Redis 8, RabbitMQ 4, Google Cloud Storage, the OpenAI Node SDK (Responses API) and the `@openai/agents` Agents SDK, Zod (config validation), class-validator/class-transformer (request DTOs), Jest (unit + e2e).
 
 API docs are served by Swagger UI at `/docs` once the app is running (covers the Nest-controller routes below; Better Auth's own `/auth/*` endpoints aren't introspectable by Swagger — see [Authentication](#authentication)).
 
@@ -45,6 +46,7 @@ flowchart LR
     rabbitmq -->|"consume routine.created"| consumer
     http -->|"upload / signed URL"| gcs[("Google Cloud Storage")]
     http -->|"structured plan / tool call"| openai{{"OpenAI Responses API"}}
+    http -->|"agent tool-calling loop"| agents{{"OpenAI Agents SDK"}}
 ```
 
 - **Postgres** is the system of record for everything (via Prisma). Every other piece of infra below is a supporting concern the app can degrade gracefully without.
@@ -52,6 +54,7 @@ flowchart LR
 - **RabbitMQ** carries a single domain event today: `RoutineCreatedProducer` publishes `routine.created` (fire-and-forget — a broker outage must never fail routine creation) after `POST /routines`, consumed in-process by `RoutineCreatedConsumer`, currently just a logging placeholder for future side effects (notifications, analytics, etc.).
 - **Google Cloud Storage** stores practice recording bytes privately; only metadata (object name, content type, size) lives in Postgres. `GcpStorageService.uploadObject` writes incoming buffers to a short-lived temp file and uses `bucket.upload()` rather than `file.save(buffer)` — the latter reliably triggered a `"Cannot call write after a stream was destroyed"` race in the client library's internal write pipeline when the whole buffer was pushed before the async upload-request setup had settled; `bucket.upload()` feeds the same pipeline via a paced `fs.createReadStream`, avoiding the race.
 - **OpenAI Responses API** turns a natural-language prompt into a structured practice plan (Structured Outputs), optionally using OpenAI's built-in `web_search` tool when the model decides external information would help — never required. The `create_routine` custom tool that actually persists the routine is only ever included in the *second*, post-confirmation request to OpenAI; the model has no way to call it before the user confirms, because the tool definition simply isn't there yet. See [AI Practice Planner](#ai-practice-planner).
+- **OpenAI Agents SDK (`@openai/agents`)** runs a single `RoutineCoachAgent` through the SDK's built-in tool-calling loop: it decides for itself which of five typed tools to call (four read tools plus `create_routine`) and in what order — that sequence is never hardcoded. The authenticated user is threaded through as SDK-native `RunContext`, never as a model-supplied argument; a heuristic (non-LLM) native input guardrail rejects off-topic or credential/SQL-probing requests before the model is even called. See [AI Routine Coach](#ai-routine-coach).
 
 A fourth, fully separate process — the weekly routine cleanup job — runs outside this hybrid app entirely, on its own schedule; see [Weekly routine cleanup job](#weekly-routine-cleanup-job).
 
@@ -61,8 +64,8 @@ For a request-by-request walkthrough of these mechanisms — authentication, a c
 
 1. **Sign up / sign in** — email + password via Better Auth, session cookie issued (see [Authentication](#authentication)).
 2. **Browse the task library** — `GET /tasks`, optionally filtered by `category`/`difficulty` (see [Data model](#data-model)).
-3. **Build a routine** — create a routine and attach tasks to it in order, with optional per-task target durations; reorder as needed (see [Routines](#routines)). Or describe what you want in natural language and let the AI Practice Planner draft one for you, subject to your explicit confirmation before anything is saved (see [AI Practice Planner](#ai-practice-planner)).
-4. **Log a practice session** — create a practice session, optionally against a routine you followed (see [Practice recordings](#practice-recordings)).
+3. **Build a routine** — create a routine and attach tasks to it in order, with optional per-task target durations; reorder as needed (see [Routines](#routines)). Or describe what you want in natural language: the **AI Practice Planner** drafts a plan you must explicitly confirm before anything is saved (see [AI Practice Planner](#ai-practice-planner)), while the **AI Routine Coach** inspects your recent practice history itself and creates the routine directly, no confirmation step (see [AI Routine Coach](#ai-routine-coach)).
+4. **Log a practice session** — create a practice session, optionally against a routine you followed and with the specific tasks you actually practiced (see [Practice recordings](#practice-recordings)).
 5. **Upload a recording** — attach an audio recording of that session to Google Cloud Storage.
 6. **Review later** — list a session's recordings and fetch a time-limited signed download URL for playback.
 
@@ -80,6 +83,9 @@ erDiagram
     ROUTINE ||--o{ ROUTINE_TASK : "routineTasks"
     TASK ||--o{ ROUTINE_TASK : "routineTasks"
     PRACTICE_SESSION ||--o{ RECORDING : "recordings"
+    ROUTINE ||--o{ PRACTICE_SESSION : "practiceSessions"
+    PRACTICE_SESSION ||--o{ PRACTICE_SESSION_TASK : "sessionTasks"
+    TASK ||--o{ PRACTICE_SESSION_TASK : "practiceSessionTasks"
 
     USER {
         uuid id PK
@@ -125,8 +131,18 @@ erDiagram
     PRACTICE_SESSION {
         uuid id PK
         uuid userId FK
+        uuid routineId FK
         varchar title
         text notes
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    PRACTICE_SESSION_TASK {
+        uuid practiceSessionId PK, FK
+        uuid taskId PK, FK
+        int durationMinutes
+        boolean completed
         timestamp createdAt
         timestamp updatedAt
     }
@@ -168,9 +184,11 @@ erDiagram
 
 `RoutineTask` is a join table between `Routine` and `Task` with a composite primary key (`routineId`, `taskId`) and a unique `(routineId, position)` constraint enforcing one task per position within a routine.
 
+`PracticeSessionTask` is the equivalent join table between `PracticeSession` and `Task` — added so the app (and the [AI Routine Coach](#ai-routine-coach)) can tell what was *actually* practiced (with a per-task duration and a `completed` flag) rather than only what a routine *planned*. `PracticeSession.routineId` is an optional FK linking a session back to the routine it followed, if any — both this and `PracticeSessionTask` are populated only when the client supplies them on `POST /practice-sessions`; older sessions simply have no rows here.
+
 `Recording` carries **two** foreign keys back to different ancestors — `userId` (direct owner) and `practiceSessionId` (parent session) — a denormalized owner reference that keeps ownership checks a single-column lookup instead of a join through `PracticeSession`.
 
-Domain foreign keys (`Routine`, `RoutineTask`, `PracticeSession`, `Recording` → `User`) default to Postgres's `ON DELETE RESTRICT`: a user can't be deleted while they still own routines, sessions, or recordings. Better Auth's own tables behave differently — `Session` and `Account` cascade-delete when their `User` is deleted. `Session`, `Account`, and `Verification` are Better Auth's own tables (session tokens, linked credentials/OAuth accounts, and email-verification/reset tokens respectively); `Verification` has no FK to `User`, it's looked up by `identifier` instead.
+Domain foreign keys (`Routine`, `RoutineTask`, `PracticeSession`, `PracticeSessionTask`, `Recording` → their required parent) default to Postgres's `ON DELETE RESTRICT`: a user can't be deleted while they still own routines, sessions, or recordings, and a session/task can't be deleted while a `PracticeSessionTask` row still references it. The one exception is `PracticeSession.routineId`, which is optional and `ON DELETE SET NULL` — deleting a routine a session was logged against un-links the session rather than blocking the delete or cascading it away. Better Auth's own tables behave differently — `Session` and `Account` cascade-delete when their `User` is deleted. `Session`, `Account`, and `Verification` are Better Auth's own tables (session tokens, linked credentials/OAuth accounts, and email-verification/reset tokens respectively); `Verification` has no FK to `User`, it's looked up by `identifier` instead.
 
 ## Local setup
 
@@ -240,7 +258,7 @@ Validated in `src/config/env.validation.ts`; the app fails fast on startup if re
 | `RECORDING_UPLOAD_MAX_SIZE_BYTES` | no | `52428800` (50MB) | Max accepted size for a single practice recording upload |
 | `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS` | no | `900` | How long a `GET .../download-url` signed URL stays valid |
 | `OPENAI_API_KEY` | yes | — | OpenAI API key used server-side only by `OpenAiResponsesService`; never exposed to clients |
-| `OPENAI_MODEL` | yes | — | Model used for Responses API calls (structured outputs, `web_search`, `create_routine`); not hardcoded in code |
+| `OPENAI_MODEL` | yes | — | Model used for both the Responses API (structured outputs, `web_search`, `create_routine`) and the `RoutineCoachAgent`'s Agents SDK run; not hardcoded in code |
 | `OPENAI_REQUEST_TIMEOUT_MS` | no | `30000` | Per-request timeout for calls to the OpenAI Responses API |
 
 See `.env.example` for the full annotated list.
@@ -379,6 +397,14 @@ curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/practice-sessions \
   -H 'Content-Type: application/json' \
   -d '{"title":"Evening practice","notes":"Worked on barre chords"}'
 
+# Same, but recording exactly which tasks were practiced and for how long,
+# optionally against the routine that was followed -- this is what lets the
+# AI Routine Coach (see below) tell what was actually practiced apart from
+# what was merely planned
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/practice-sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"routineId":"<routine-uuid>","tasks":[{"taskId":"<task-uuid>","durationMinutes":15,"completed":true}]}'
+
 # Upload a recording to that session (multipart/form-data, field name "file")
 curl -i -b cookies.txt -X POST \
   http://localhost:3000/api/v1/practice-sessions/<session-uuid>/recordings \
@@ -396,7 +422,7 @@ curl -i -b cookies.txt -X DELETE http://localhost:3000/api/v1/recordings/<record
 
 The download URL returned by `/recordings/:id/download-url` expires after `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS` (default 900s / 15 minutes) — request a fresh one if it lapses.
 
-Sessions and recordings are scoped to the requesting user: acting on another user's session or recording returns `404 Not Found` (not `403`), so existence isn't leaked to non-owners.
+Sessions and recordings are scoped to the requesting user: acting on another user's session or recording returns `404 Not Found` (not `403`), so existence isn't leaked to non-owners. A `routineId` supplied when creating a session is checked the same way — referencing a routine you don't own also returns `404`.
 
 ## AI Practice Planner
 
@@ -428,6 +454,35 @@ Notes:
 - OpenAI's built-in `web_search` tool is available to the model but optional — it's only used when the model decides external information would improve the plan, not on every request.
 - The plan is validated twice before anything is written: once by the Responses API's Structured Outputs schema, and again by application code (at least one task, positive durations, task durations reasonably summing to the requested total) — model output is never trusted blindly.
 - OpenAI timeouts/outages map to `504`/`503` and never affect any other endpoint; a malformed or unexpected model response maps to `502`.
+
+## AI Routine Coach
+
+Describe what you want ("create me a 45-minute routine based on what I haven't practiced recently") and a single `RoutineCoachAgent` — built on the [`@openai/agents`](https://github.com/openai/openai-agents-js) SDK, using its built-in tool-calling run loop rather than a hand-rolled one — decides for itself which of five typed tools it needs, gathers whatever context it thinks is relevant, and creates the routine directly. Unlike the [AI Practice Planner](#ai-practice-planner), there's no confirmation step: a single `POST /api/v1/ai/routine-coach` call either returns a persisted routine or doesn't. Requires `OPENAI_API_KEY`/`OPENAI_MODEL` to be set (see [Environment variables](#environment-variables)).
+
+```bash
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/ai/routine-coach \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Create a 45-minute guitar routine based on things I have not practiced recently. Avoid what I practiced yesterday."}'
+# => { "message": "...", "routineId": "...", "routineTitle": "...", "taskCount": 4 }
+```
+
+The five tools, all resolving the authenticated user from SDK-native `RunContext` rather than any model-supplied argument:
+
+| Tool | Purpose |
+|---|---|
+| `get_recent_practice_sessions` | What was **actually** practiced recently (per-task duration, completion) — the strongest signal for recent behavior |
+| `get_recent_routines` | What was **planned** recently — weaker signal, useful for understanding intent |
+| `get_user_tasks` | The task catalog routines can be built from; the model may only use task IDs this tool returns |
+| `get_task_stats` | Deterministic, aggregated per-task stats (times/minutes practiced, last-practiced date) computed in application code, not left to the model to derive from raw session data |
+| `create_routine` | The only tool that writes anything — persists through the existing `RoutinesService`/`TasksService`, after independently re-validating every task ID, duration, and ordering |
+
+Notes:
+
+- **The tool sequence is never hardcoded.** "Create a 30-minute routine for today" might resolve with just `get_user_tasks` + `create_routine`; a request that depends on recent history pulls in `get_recent_practice_sessions`/`get_task_stats` first. The agent decides.
+- **A native input guardrail runs before the model is called at all** (`RoutineCoachInputGuardrail`, wired through `@openai/agents`' own `InputGuardrail` mechanism, blocking rather than running in parallel). It's a deliberately small heuristic keyword check — not a second LLM call, since the app is scoped to exactly one agent — that rejects requests unrelated to guitar practice/routines or attempting to reach credentials, secrets, SQL, or another user's data. A trip returns `400` without leaking guardrail internals or system instructions; it's logged server-side and never replaces the deterministic authorization below.
+- **The LLM never touches Prisma, decides authorization, or is trusted about whether a write succeeded.** `create_routine`'s arguments (existing task IDs, a duration, and an order per task) are independently re-validated in application code — every task ID must exist, durations and the routine total must be within a fixed cap, orders must be exactly `1..N` with no gaps or duplicates — before `RoutinesService.create`/`addTask` are called. The response's `routineId` is read from a side-channel the tool sets only after that write actually succeeds, never parsed out of the model's own text, so the model claiming success and a routine actually existing can't drift apart.
+- Max turns is capped (8) to bound runaway tool-calling loops; hitting the cap maps to `502`, same bucket as a malformed OpenAI response. Malformed tool-call arguments from the model map to `400`; an unhandled failure inside a tool (e.g. an unexpected database error while reading practice history) maps to `502` without leaking the underlying cause.
+- `Task` has no per-user ownership in this schema (it's a shared, admin-managed catalog) — `get_user_tasks` returns the same catalog to every user; "task not found" is the only way an invalid task ID can fail.
 
 ## Weekly routine cleanup job
 
@@ -667,6 +722,9 @@ gcloud run services add-iam-policy-binding SERVICE_NAME \
 - **Weekly routine cleanup is a standalone `createApplicationContext`, not a fourth hybrid-microservice consumer.** Unlike the RabbitMQ consumer (in-process alongside HTTP), this job boots its own minimal Nest module (`ConfigModule` + `PrismaModule` only) with no HTTP listener, deployed as a separate Cloud Run Job/Cloud Scheduler pair. It intentionally does not depend on `RoutinesModule` (which requires `RABBITMQ_URL`/`REDIS_URL` for its producer/lock deps this job has no use for) or the main `env.validation.ts` schema (which requires unrelated secrets like `BETTER_AUTH_SECRET`) — keeping its own env/IAM footprint to just `DATABASE_URL` and two job-specific vars.
 - **AI Practice Planner: OpenAI wrapped behind a swappable `AiProvider` seam.** `OpenAiResponsesService` (`src/ai-practice-planner/openai/`) is the sole caller of the `openai` SDK, bound behind an `AiProvider` interface via the `AI_PROVIDER` DI token — e2e tests swap in a `FakeAiProvider` the same way `GcpStorageService`/`ROUTINE_EVENTS_CLIENT` are swapped above. The `create_routine` custom tool is only ever included in the *second*, post-confirmation Responses API request — the model architecturally cannot call it before the user confirms, which is the actual enforcement of "don't persist without confirmation," not a prompt instruction.
 - **AI-planned tasks always create a new `Task` row; the plan-ownership cache is fail-closed.** Rather than fuzzy-matching an AI-generated task against the existing task library, `CreateRoutineTool` always creates a fresh `Task` — simpler and more predictable, at the cost of the library accumulating near-duplicates over time. Separately, the Redis-cached binding between a plan's `previousResponseId` and the user who requested it is read fail-closed on confirmation (any cache error, miss, or mismatch → `404`) — unlike `TasksService`'s fail-open cache reads, since this one is an authorization check, not a performance optimization (same rationale as the fail-closed reorder lock above).
+- **`PracticeSessionTask` join table added specifically so the AI Routine Coach has real per-task practice signal.** Before this, `PracticeSession` carried only `title`/`notes` — there was no way to know which tasks a session covered, so "prefer actual practice over planned routines" (the Routine Coach's core premise) couldn't be implemented truthfully. The new table (plus optional `PracticeSession.routineId`) is populated only when a client supplies it on `POST /practice-sessions`; it's additive and doesn't change any existing endpoint's default behavior.
+- **AI Routine Coach: one `@openai/agents` `Agent`, never a second one.** `RoutineCoachAgentFactory` constructs exactly one `Agent` per process (default/singleton Nest scope, since the SDK's `setDefaultOpenAIClient` is a process-wide setter); the input guardrail deliberately does *not* spin up a second classifier agent (the SDK's own documented pattern for LLM-based guardrails) so the codebase's single-agent invariant holds — it's a synchronous keyword heuristic wired through the SDK's native `InputGuardrail` shape instead. `create_routine`'s success/failure is threaded back to the HTTP response via a plain object on the run's `RunContext` (`context.createdRoutine`), set only after `RoutinesService`/`TasksService` calls actually succeed — the alternative (trusting the model's own final message for whether a routine was created) is exactly the kind of trust-the-LLM boundary this feature is meant to avoid.
+- **Reused the existing `OPENAI_CLIENT` factory, not the existing `AiPracticePlannerModule`.** `AiRoutineCoachModule` builds its own `OPENAI_CLIENT` provider from `createOpenAiClient` (imported from `ai-practice-planner/openai/`) rather than importing `AiPracticePlannerModule` wholesale — that would have pulled in `RoutinesModule`/`TasksModule`/`CreateRoutineTool`/`AI_PROVIDER` the new module has no use for, just to reach one token. Costs a second small `OpenAI` client instance in the process; keeps the two AI feature modules independent.
 - **Weekly routine cleanup has no retry logic, by design.** `run()` does a single atomic `prisma.routine.updateMany` that's idempotent (once a routine flips to `archived` it no longer matches `status: active`), and the selection window (`createdAt < currentWeekStart`) is cumulative rather than "this week only" — so a failed or skipped run is always caught by the next scheduled run or an on-demand `gcloud run jobs execute`. The Cloud Run Job is deployed with `--max-retries=0` deliberately: since the job self-heals on the next run anyway, blind auto-retry would mostly just retry non-transient failures (bad `DATABASE_URL`, IAM misconfiguration) instead of surfacing them immediately in logs.
 
 ## Resources
@@ -680,3 +738,4 @@ gcloud run services add-iam-policy-binding SERVICE_NAME \
 - [RabbitMQ](https://www.rabbitmq.com/docs) / [amqplib](https://github.com/amqp-node/amqplib)
 - [@google-cloud/storage](https://github.com/googleapis/nodejs-storage)
 - [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses) / [OpenAI Node SDK](https://github.com/openai/openai-node)
+- [OpenAI Agents SDK for JavaScript/TypeScript](https://openai.github.io/openai-agents-js/)
