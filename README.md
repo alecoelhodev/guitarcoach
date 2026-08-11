@@ -666,7 +666,9 @@ printf '%s' "rediss://default:PASSWORD@YOUR_REDIS_HOST:6379" | \
   gcloud secrets create SERVICE_NAME-redis-url --project=PROJECT_ID --data-file=-
 printf '%s' "amqps://USER:PASSWORD@YOUR_RABBITMQ_HOST/VHOST" | \
   gcloud secrets create SERVICE_NAME-rabbitmq-url --project=PROJECT_ID --data-file=-
-for SECRET in SERVICE_NAME-database-url SERVICE_NAME-better-auth-secret SERVICE_NAME-redis-url SERVICE_NAME-rabbitmq-url; do
+printf '%s' "YOUR_OPENAI_API_KEY" | \
+  gcloud secrets create SERVICE_NAME-openai-api-key --project=PROJECT_ID --data-file=-
+for SECRET in SERVICE_NAME-database-url SERVICE_NAME-better-auth-secret SERVICE_NAME-redis-url SERVICE_NAME-rabbitmq-url SERVICE_NAME-openai-api-key; do
   gcloud secrets add-iam-policy-binding "$SECRET" --project=PROJECT_ID \
     --member="serviceAccount:SERVICE_NAME-api-runtime@PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
