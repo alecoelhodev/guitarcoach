@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Guitar Coach is a NestJS 11 (Express) backend for tracking guitar practice: users build **routines** from a shared **task** library, log **practice sessions**, and attach audio **recordings** stored in Google Cloud Storage. Auth is Better Auth (email/password, session cookies) via `@thallesp/nestjs-better-auth`. Data lives in Postgres via Prisma 7 (`@prisma/adapter-pg`). Redis backs three independent concerns (HTTP cache, a distributed lock, Better Auth rate limiting) and RabbitMQ carries one domain event (`routine.created`), consumed in the same process via a hybrid Nest microservice — there is no separate worker deployable. Full architecture diagram, ER diagram, and endpoint-by-endpoint curl walkthroughs live in `README.md`; this file is quick-reference guidance for working in the code, not a restatement of it.
 
-**Feature modules** (`src/`): `config` (Zod env validation), `health` (Terminus liveness/readiness), `auth` (Better Auth wiring + Redis rate-limit storage), `users`, `tasks` (Redis-cached reads), `routines` (+ `routines/events` for the RabbitMQ producer/consumer), `practice-sessions` (+ its `recordings` sub-module), `gcp-storage` (GCS wrapper), `prisma` (`PrismaService`), `redis` (`RedisLockService`), `weekly-routine-cleanup` (standalone Cloud Run Job entrypoint, not HTTP-facing and not registered in `AppModule` — see Architecture notes).
+**Feature modules** (`src/`): `config` (Zod env validation), `health` (Terminus liveness/readiness), `auth` (Better Auth wiring + Redis rate-limit storage), `users`, `tasks` (Redis-cached reads), `routines` (+ `routines/events` for the RabbitMQ producer/consumer), `practice-sessions` (+ its `recordings` sub-module), `ai-practice-planner` (OpenAI Responses API integration — structured-output plan generation, optional `web_search`, and a `create_routine` custom tool gated behind explicit user confirmation; see Coding conventions and Key file pointers below), `gcp-storage` (GCS wrapper), `prisma` (`PrismaService`), `redis` (`RedisLockService`), `weekly-routine-cleanup` (standalone Cloud Run Job entrypoint, not HTTP-facing and not registered in `AppModule` — see Architecture notes).
 
 ## Commands
 
@@ -76,6 +76,7 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 - **Fail-open vs. fail-closed for infra dependencies**: Redis-backed cache (`tasks`) and Better Auth rate-limit storage catch their own errors and degrade silently (log + treat as a miss) — a Redis outage must never break a request. The routine-reorder distributed lock (`RedisLockService`) is the deliberate exception: lock-acquire failure returns `503`, because proceeding without the lock risks corrupting task ordering. When adding new Redis-backed features, default to fail-open unless correctness genuinely requires fail-closed like the lock does.
 - **Async domain events are fire-and-forget**: `RoutineCreatedProducer.publish(...)` is called after the DB write commits and wrapped in try/catch purely against a synchronous throw — a broker outage must never fail the HTTP request. Follow this pattern (publish after commit, never await-and-fail-on-publish-error) for any new event.
 - **Controllers stay thin**: business logic, ownership checks, and Prisma-error translation live in the service; controllers just wire DTOs/guards/decorators to service calls.
+- **AI/LLM provider integrations**: wrap the vendor SDK behind a small interface (e.g. `AiProvider`) bound via a DI token (`AI_PROVIDER`), and inject the vendor client itself via its own token (`OPENAI_CLIENT`) rather than constructing it inline in the implementing service — this is what lets a unit test hand-build a fake client/provider instead of reaching for `jest.mock()`, and lets e2e tests swap in a fake provider the same way `GcpStorageService`/`ROUTINE_EVENTS_CLIENT` are swapped. See `src/ai-practice-planner/openai/` for the reference implementation.
 
 ## Naming conventions
 
@@ -91,6 +92,15 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 - **e2e auth**: driven by `requestAs(app, role?, userId?)` (`test/support/request-as.ts`), which sends `x-test-role`/`x-test-user-id` headers that `FakeAuthGuard` reads via the same `PUBLIC`/`OPTIONAL`/`ROLES` reflector metadata the real guard uses. Never drive e2e auth through a real Better Auth sign-in flow.
 - **e2e DB lifecycle**: `test/support/global-setup.ts` validates `TEST_DATABASE_URL`, creates the DB if missing (guarding the name against SQL injection via a `SAFE_DATABASE_NAME` regex before interpolating), and runs `prisma migrate deploy` once for the whole suite. Per-spec `beforeEach` fetches `PrismaService` off the built app and `deleteMany()`s tables in FK-dependency order (children first); `afterEach` calls `app.close()`.
 
+## Documentation maintenance
+
+Whenever a change adds a new feature module, endpoint, environment variable, external dependency, or a notable architectural decision, update the relevant sections of **both** `README.md` and this file (`CLAUDE.md`) as part of that same change — not as a follow-up task. Treat outdated docs as a defect in the change itself, the same way a missing test would be.
+
+- **`README.md`**: update the feature module bullet in Overview, add/update the endpoint's own section with curl examples (matching the style of Routines/Practice recordings), the environment variables table, the architecture diagram/bullets if a new external service or integration boundary is introduced, and a bullet in Architecture decisions for any non-obvious design choice (mirrors the existing bullets there).
+- **`CLAUDE.md`**: add the new module to the Feature modules list in Project overview, a Key file pointers entry if the change introduces a reusable pattern future work should copy, and a Coding/Naming/Testing conventions bullet only if the change establishes a genuinely new convention (not just another instance of an existing one).
+- Keep additions to the same terse, reference style already used in each file — a sentence or two per bullet, not a restatement of the code.
+- If a change is small enough that neither file needs an update (e.g. a bug fix with no new surface area), say so explicitly in the completion summary rather than silently skipping it.
+
 ## Forbidden shortcuts
 
 - Don't remove the `@emnapi/core`/`@emnapi/runtime` pinned devDependencies — see Dependency management above.
@@ -102,6 +112,7 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 - Don't use `jest.mock()` module-level mocking or add a shared mock-factory test-utils package — hand-build typed per-spec mocks matching existing specs.
 - Don't drop explicit `@Inject(Token)` constructor parameters in a `tsx`-bootstrapped standalone entrypoint once any parameter has a generic type argument — esbuild silently breaks metadata-based DI for the whole constructor in that case.
 - Don't disable auth/CSRF/CORS/CSP/TLS as a default, and don't skip git hooks (`--no-verify`) to unblock a commit — fix the root cause instead.
+- Don't skip updating `README.md`/`CLAUDE.md` for a change that adds a feature, endpoint, env var, or external dependency — see Documentation maintenance above.
 
 ## Roadmap (future intent, not started)
 
@@ -117,6 +128,7 @@ Do not treat a successful local `npm install`/`npm ci` as sufficient proof on it
 - `src/gcp-storage/gcp-storage.service.ts` — the sole `@google-cloud/storage` wrapper (`@Global()`); reuse it rather than constructing a second `Storage` client. Note the temp-file-then-`bucket.upload()` upload path — don't revert to `file.save(buffer)` (see the comment in that file for why).
 - `src/routines/events/` — the RabbitMQ producer/consumer pattern (`*.producer.ts`/`*.consumer.ts`, shared queue-options constants) to copy for any new async domain event.
 - `src/weekly-routine-cleanup/` — the standalone scheduled-batch-job pattern (own `main.ts`/`env.validation.ts`) to copy for any new scheduled job; see Architecture notes.
+- `src/ai-practice-planner/` — the reference pattern for any future external AI/LLM tool-calling integration: the `AiProvider` interface + DI-token seam (`openai/`), the "the model's write tool is only ever included in the request *after* explicit user confirmation" persistence-safety pattern, and `CreateRoutineTool` (`tools/`) reusing `RoutinesService`/`TasksService` instead of touching Prisma directly.
 - `test/support/build-test-app.ts` — the e2e `TestingModule` builder and its infra-boundary overrides (`FakeGcpStorageService`, `FakeRoutineEventsClient`, `FakeAuthGuard`); see Testing conventions.
 - `.env.example` — annotated list of every environment variable; `compose.yaml` (base) + `compose.dev.yaml`/`compose.prod.yaml` (overlays) — Docker Compose service wiring.
 - `README.md` — architecture diagram, ER diagram, full endpoint list with curl examples; read this for "how does X work end-to-end" before re-deriving it from code.

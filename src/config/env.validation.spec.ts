@@ -7,6 +7,8 @@ const REDIS_URL = 'redis://localhost:6379';
 const RABBITMQ_URL = 'amqp://user:pass@localhost:5672';
 const GCP_PROJECT_ID = 'guitar-coach-dev';
 const GCS_RECORDINGS_BUCKET = 'guitar-coach-recordings-dev';
+const OPENAI_API_KEY = 'sk-test-key';
+const OPENAI_MODEL = 'gpt-4.1';
 
 describe('validate', () => {
   it('succeeds for a valid configuration', () => {
@@ -22,6 +24,8 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     });
 
     expect(result).toEqual({
@@ -39,6 +43,9 @@ describe('validate', () => {
       GCS_RECORDINGS_BUCKET,
       RECORDING_UPLOAD_MAX_SIZE_BYTES: 52_428_800,
       RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS: 900,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+      OPENAI_REQUEST_TIMEOUT_MS: 30_000,
     });
   });
 
@@ -272,6 +279,8 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
       CACHE_TTL_MS: '120000',
     });
 
@@ -289,6 +298,8 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     });
 
     expect(result.PORT).toBe(4000);
@@ -309,6 +320,8 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     });
 
     expect(result.TEST_DATABASE_URL).toBe(TEST_DATABASE_URL);
@@ -340,6 +353,8 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     });
 
     expect(result.PORT).toBe(3000);
@@ -357,6 +372,8 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     });
 
     expect(result.CACHE_TTL_MS).toBe(300_000);
@@ -372,9 +389,60 @@ describe('validate', () => {
       RABBITMQ_URL,
       GCP_PROJECT_ID,
       GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
     });
 
     expect(result.RECORDING_UPLOAD_MAX_SIZE_BYTES).toBe(52_428_800);
     expect(result.RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS).toBe(900);
+  });
+
+  it('fails when OPENAI_API_KEY is missing', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+        OPENAI_MODEL,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('fails when OPENAI_MODEL is missing', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+        OPENAI_API_KEY,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('applies the default OPENAI_REQUEST_TIMEOUT_MS when omitted', () => {
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+    });
+
+    expect(result.OPENAI_REQUEST_TIMEOUT_MS).toBe(30_000);
   });
 });

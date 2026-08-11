@@ -29,6 +29,9 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(900),
+  OPENAI_API_KEY: z.string().min(1),
+  OPENAI_MODEL: z.string().min(1),
+  OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 });
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;

@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage } from '@google-cloud/storage';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { EnvironmentVariables } from '../config/env.validation';
 import { GcpStorageService } from './gcp-storage.service';
 
 jest.mock('@google-cloud/storage', () => ({
@@ -49,7 +50,7 @@ describe('GcpStorageService', () => {
         if (key === 'GCS_RECORDINGS_BUCKET') return 'test-bucket';
         throw new Error(`Unexpected config key: ${key}`);
       }),
-    } as unknown as ConfigService;
+    } as unknown as ConfigService<EnvironmentVariables, true>;
 
     service = new GcpStorageService(configService);
   });
