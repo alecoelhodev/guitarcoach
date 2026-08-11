@@ -32,6 +32,16 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  HEALTH_MEMORY_HEAP_THRESHOLD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(300 * 1024 * 1024),
+  HEALTH_MEMORY_RSS_THRESHOLD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(300 * 1024 * 1024),
 });
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;

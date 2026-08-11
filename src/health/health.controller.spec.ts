@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   DiskHealthIndicator,
@@ -19,6 +20,7 @@ describe('HealthController', () => {
   let diskHealthIndicator: { checkStorage: jest.Mock };
   let prismaHealthIndicator: { pingCheck: jest.Mock };
   let prismaService: PrismaService;
+  let configService: { get: jest.Mock };
 
   beforeEach(async () => {
     healthCheckService = {
@@ -37,6 +39,15 @@ describe('HealthController', () => {
       pingCheck: jest.fn().mockResolvedValue({ database: { status: 'up' } }),
     };
     prismaService = {} as PrismaService;
+    configService = {
+      get: jest.fn((key: string) => {
+        const values: Record<string, number> = {
+          HEALTH_MEMORY_HEAP_THRESHOLD_BYTES: 300 * 1024 * 1024,
+          HEALTH_MEMORY_RSS_THRESHOLD_BYTES: 300 * 1024 * 1024,
+        };
+        return values[key];
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthController],
@@ -46,6 +57,7 @@ describe('HealthController', () => {
         { provide: DiskHealthIndicator, useValue: diskHealthIndicator },
         { provide: PrismaHealthIndicator, useValue: prismaHealthIndicator },
         { provide: PrismaService, useValue: prismaService },
+        { provide: ConfigService, useValue: configService },
       ],
     }).compile();
 

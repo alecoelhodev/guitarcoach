@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   DiskHealthIndicator,
   HealthCheck,
@@ -7,10 +8,9 @@ import {
   PrismaHealthIndicator,
 } from '@nestjs/terminus';
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
+import { EnvironmentVariables } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 
-const HEAP_THRESHOLD_BYTES = 300 * 1024 * 1024;
-const RSS_THRESHOLD_BYTES = 300 * 1024 * 1024;
 const DISK_THRESHOLD_PERCENT = 0.9;
 
 @Controller('health')
@@ -21,6 +21,7 @@ export class HealthController {
     private readonly disk: DiskHealthIndicator,
     private readonly db: PrismaHealthIndicator,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService<EnvironmentVariables, true>,
   ) {}
 
   @Get('live')
@@ -34,9 +35,18 @@ export class HealthController {
   @AllowAnonymous()
   @HealthCheck()
   readiness() {
+    const heapThresholdBytes = this.configService.get(
+      'HEALTH_MEMORY_HEAP_THRESHOLD_BYTES',
+      { infer: true },
+    );
+    const rssThresholdBytes = this.configService.get(
+      'HEALTH_MEMORY_RSS_THRESHOLD_BYTES',
+      { infer: true },
+    );
+
     return this.health.check([
-      () => this.memory.checkHeap('memory_heap', HEAP_THRESHOLD_BYTES),
-      () => this.memory.checkRSS('memory_rss', RSS_THRESHOLD_BYTES),
+      () => this.memory.checkHeap('memory_heap', heapThresholdBytes),
+      () => this.memory.checkRSS('memory_rss', rssThresholdBytes),
       () =>
         this.disk.checkStorage('disk', {
           path: '/',
