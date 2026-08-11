@@ -5,6 +5,7 @@ import { AuthModule } from '@thallesp/nestjs-better-auth';
 import KeyvRedis from '@keyv/redis';
 import type { RedisClientOptions } from '@redis/client';
 import { AiPracticePlannerModule } from './ai-practice-planner/ai-practice-planner.module';
+import { AiRoutineCoachModule } from './ai-routine-coach/ai-routine-coach.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { createAuth } from './auth/auth';
@@ -66,6 +67,7 @@ import { UsersModule } from './users/users.module';
     RoutinesModule,
     PracticeSessionsModule,
     AiPracticePlannerModule,
+    AiRoutineCoachModule,
   ],
   controllers: [AppController],
   providers: [AppService],

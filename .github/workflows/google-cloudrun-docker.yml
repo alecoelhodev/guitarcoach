@@ -102,11 +102,13 @@ jobs:
             GCP_PROJECT_ID=${{ env.PROJECT_ID }}
             GCS_RECORDINGS_BUCKET=practice-sessions-2026
             BETTER_AUTH_URL=https://guitarcoach-685026468764.us-east1.run.app
+            OPENAI_MODEL=gpt-4.1
           secrets: |-
             DATABASE_URL=guitarcoach-database-url:latest
             BETTER_AUTH_SECRET=guitarcoach-better-auth-secret:latest
             REDIS_URL=guitarcoach-redis-url:latest
             RABBITMQ_URL=guitarcoach-rabbitmq-url:latest
+            OPENAI_API_KEY=guitarcoach-openai-api-key:latest
 
       # Runs after traffic has already shifted to the new revision (no
       # --no-traffic/tagging on the deploy step above) — this is a detection

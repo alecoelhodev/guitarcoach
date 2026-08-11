@@ -46,6 +46,8 @@ describe('validate', () => {
       OPENAI_API_KEY,
       OPENAI_MODEL,
       OPENAI_REQUEST_TIMEOUT_MS: 30_000,
+      HEALTH_MEMORY_HEAP_THRESHOLD_BYTES: 314_572_800,
+      HEALTH_MEMORY_RSS_THRESHOLD_BYTES: 314_572_800,
     });
   });
 
@@ -444,5 +446,23 @@ describe('validate', () => {
     });
 
     expect(result.OPENAI_REQUEST_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it('applies defaults for HEALTH_MEMORY_HEAP_THRESHOLD_BYTES and HEALTH_MEMORY_RSS_THRESHOLD_BYTES when omitted', () => {
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+    });
+
+    expect(result.HEALTH_MEMORY_HEAP_THRESHOLD_BYTES).toBe(314_572_800);
+    expect(result.HEALTH_MEMORY_RSS_THRESHOLD_BYTES).toBe(314_572_800);
   });
 });

@@ -9,6 +9,13 @@ services:
       # compose.yaml — the container can't see host paths directly, so it
       # must point at the in-container path the volume below mounts to.
       GOOGLE_APPLICATION_CREDENTIALS: /usr/src/app/gcp-credentials.json
+      # `nest start --watch` (this target's dev server) keeps an in-process
+      # TS/webpack compiler alive alongside the app, pushing RSS well above
+      # the 300MB default (calibrated for the compiled production build) for
+      # roughly the first two minutes after boot — which otherwise spams
+      # `/health/ready` failures. Only RSS needs the override; memory_heap
+      # doesn't exceed the default in dev.
+      HEALTH_MEMORY_RSS_THRESHOLD_BYTES: "1073741824"
     ports:
       - "${PORT:-3000}:3000"
     volumes:

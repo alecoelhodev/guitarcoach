@@ -214,6 +214,20 @@ describe('TasksService', () => {
     });
   });
 
+  describe('findAllUnpaginated', () => {
+    it('returns every task with no pagination arguments sent to Prisma', async () => {
+      const tasks = [buildTask(), buildTask({ id: 'other-id' })];
+      prisma.task.findMany.mockResolvedValue(tasks);
+
+      const result = await service.findAllUnpaginated();
+
+      expect(prisma.task.findMany).toHaveBeenCalledWith({
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(result).toEqual(tasks);
+    });
+  });
+
   describe('findById', () => {
     it('returns the matching task', async () => {
       const created = buildTask();
