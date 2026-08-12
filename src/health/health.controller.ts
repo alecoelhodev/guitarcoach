@@ -10,6 +10,8 @@ import {
 import { AllowAnonymous } from '@thallesp/nestjs-better-auth';
 import { EnvironmentVariables } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
+import { RabbitmqHealthIndicator } from './indicators/rabbitmq.health-indicator';
+import { RedisHealthIndicator } from './indicators/redis.health-indicator';
 
 const DISK_THRESHOLD_PERCENT = 0.9;
 
@@ -20,6 +22,8 @@ export class HealthController {
     private readonly memory: MemoryHealthIndicator,
     private readonly disk: DiskHealthIndicator,
     private readonly db: PrismaHealthIndicator,
+    private readonly redis: RedisHealthIndicator,
+    private readonly rabbitmq: RabbitmqHealthIndicator,
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService<EnvironmentVariables, true>,
   ) {}
@@ -53,6 +57,8 @@ export class HealthController {
           thresholdPercent: DISK_THRESHOLD_PERCENT,
         }),
       () => this.db.pingCheck('database', this.prisma),
+      () => this.redis.pingCheck('redis'),
+      () => this.rabbitmq.pingCheck('rabbitmq'),
     ]);
   }
 }

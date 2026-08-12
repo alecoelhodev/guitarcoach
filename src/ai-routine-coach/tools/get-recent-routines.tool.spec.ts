@@ -1,3 +1,4 @@
+import { meters } from '../../observability/metrics/meters';
 import {
   getRecentRoutines,
   GetRecentRoutinesArgsSchema,
@@ -13,6 +14,19 @@ describe('getRecentRoutines', () => {
 
   beforeEach(() => {
     routinesService = { findRecent: jest.fn().mockResolvedValue([]) };
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('records ai_tool_duration_ms with the tool name and a success outcome', async () => {
+    const recordSpy = jest.spyOn(meters.aiToolDurationMs, 'record');
+
+    await getRecentRoutines({ routinesService }, USER_ID, {});
+
+    expect(recordSpy).toHaveBeenCalledWith(expect.any(Number), {
+      tool: 'get_recent_routines',
+      outcome: 'success',
+    });
   });
 
   it('has no userId parameter in its Zod schema', () => {

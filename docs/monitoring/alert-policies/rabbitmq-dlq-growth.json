@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - RabbitMQ dead-letter growth",
+  "documentation": {
+    "content": "Any message has been dead-lettered in the last 15 minutes. Backed by queue_dead_lettered_total (src/routines/events/routine-created.consumer.ts). At current traffic volume, any dead-lettering is worth investigating — the routine.created consumer is currently a logging placeholder with no business logic that should legitimately fail. Check the routine_events.dlq queue depth in the RabbitMQ management UI (already enabled, see compose.yaml) for the actual backlog. VERIFY the metric.type filter below in Metrics Explorer before applying (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Dead-lettered messages > 0 over 15 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/queue_dead_lettered_total/counter\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "900s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "900s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

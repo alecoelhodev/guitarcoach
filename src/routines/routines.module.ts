@@ -6,6 +6,7 @@ import {
   ROUTINE_EVENTS_CLIENT,
   routineEventsRmqOptions,
 } from './events/rabbitmq.constants';
+import { RoutineEventsDeadLetterTopologyInitializer } from './events/dead-letter-topology';
 import { RoutineCreatedConsumer } from './events/routine-created.consumer';
 import { RoutineCreatedProducer } from './events/routine-created.producer';
 import { RoutinesController } from './routines.controller';
@@ -27,7 +28,11 @@ import { RoutinesService } from './routines.service';
     ]),
   ],
   controllers: [RoutinesController, RoutineCreatedConsumer],
-  providers: [RoutinesService, RoutineCreatedProducer],
+  providers: [
+    RoutinesService,
+    RoutineCreatedProducer,
+    RoutineEventsDeadLetterTopologyInitializer,
+  ],
   exports: [RoutinesService],
 })
 export class RoutinesModule {}

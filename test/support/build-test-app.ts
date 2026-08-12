@@ -8,6 +8,7 @@ import { AI_PROVIDER } from '../../src/ai-practice-planner/openai/openai.constan
 import { AppConfigModule } from '../../src/config/app-config.module';
 import { GcpStorageModule } from '../../src/gcp-storage/gcp-storage.module';
 import { GcpStorageService } from '../../src/gcp-storage/gcp-storage.service';
+import { ObservabilityModule } from '../../src/observability/observability.module';
 import { PracticeSessionsModule } from '../../src/practice-sessions/practice-sessions.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { RedisLockModule } from '../../src/redis/redis-lock.module';
@@ -57,6 +58,7 @@ export async function buildTestApp(): Promise<INestApplication<App>> {
   const moduleFixture = await Test.createTestingModule({
     imports: [
       AppConfigModule,
+      ObservabilityModule,
       CacheModule.register({ isGlobal: true }),
       PrismaModule,
       GcpStorageModule,

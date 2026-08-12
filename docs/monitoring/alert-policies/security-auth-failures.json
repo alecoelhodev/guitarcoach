@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - unusual authentication failure volume",
+  "documentation": {
+    "content": "More than 20 failed sign-in attempts (auth.sign_in security events, outcome=failure) in a 5-minute window, across all users/IPs. Backed by the security_auth_sign_in_failures log-based metric (see docs/monitoring/log-based-metrics/auth-sign-in-failures.json) — apply that log-based metric first. Better Auth's own Redis-backed rate limiter already caps this at 5/60s per IP+route (src/auth/auth.ts), so a broader spike across many IPs suggests distributed credential stuffing rather than one noisy client. Log-based custom metrics use the reliable logging.googleapis.com/user/ prefix, so this metric.type is not subject to the OTLP-naming caveat that applies to the other policies in this directory.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Failed sign-ins > 20 over 5 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/security_auth_sign_in_failures\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 20,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

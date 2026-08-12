@@ -9,6 +9,8 @@ import {
 } from '@nestjs/terminus';
 import { PrismaService } from '../prisma/prisma.service';
 import { HealthController } from './health.controller';
+import { RabbitmqHealthIndicator } from './indicators/rabbitmq.health-indicator';
+import { RedisHealthIndicator } from './indicators/redis.health-indicator';
 
 describe('HealthController', () => {
   let controller: HealthController;
@@ -19,6 +21,8 @@ describe('HealthController', () => {
   };
   let diskHealthIndicator: { checkStorage: jest.Mock };
   let prismaHealthIndicator: { pingCheck: jest.Mock };
+  let redisHealthIndicator: { pingCheck: jest.Mock };
+  let rabbitmqHealthIndicator: { pingCheck: jest.Mock };
   let prismaService: PrismaService;
   let configService: { get: jest.Mock };
 
@@ -38,6 +42,12 @@ describe('HealthController', () => {
     prismaHealthIndicator = {
       pingCheck: jest.fn().mockResolvedValue({ database: { status: 'up' } }),
     };
+    redisHealthIndicator = {
+      pingCheck: jest.fn().mockResolvedValue({ redis: { status: 'up' } }),
+    };
+    rabbitmqHealthIndicator = {
+      pingCheck: jest.fn().mockResolvedValue({ rabbitmq: { status: 'up' } }),
+    };
     prismaService = {} as PrismaService;
     configService = {
       get: jest.fn((key: string) => {
@@ -56,6 +66,11 @@ describe('HealthController', () => {
         { provide: MemoryHealthIndicator, useValue: memoryHealthIndicator },
         { provide: DiskHealthIndicator, useValue: diskHealthIndicator },
         { provide: PrismaHealthIndicator, useValue: prismaHealthIndicator },
+        { provide: RedisHealthIndicator, useValue: redisHealthIndicator },
+        {
+          provide: RabbitmqHealthIndicator,
+          useValue: rabbitmqHealthIndicator,
+        },
         { provide: PrismaService, useValue: prismaService },
         { provide: ConfigService, useValue: configService },
       ],
@@ -73,10 +88,12 @@ describe('HealthController', () => {
   });
 
   describe('readiness', () => {
-    it('checks heap, RSS, disk usage, and database connectivity', async () => {
+    it('checks heap, RSS, disk usage, database, Redis, and RabbitMQ connectivity', async () => {
       await controller.readiness();
 
       expect(healthCheckService.check).toHaveBeenCalledWith([
+        expect.any(Function),
+        expect.any(Function),
         expect.any(Function),
         expect.any(Function),
         expect.any(Function),
@@ -103,6 +120,10 @@ describe('HealthController', () => {
       expect(prismaHealthIndicator.pingCheck).toHaveBeenCalledWith(
         'database',
         prismaService,
+      );
+      expect(redisHealthIndicator.pingCheck).toHaveBeenCalledWith('redis');
+      expect(rabbitmqHealthIndicator.pingCheck).toHaveBeenCalledWith(
+        'rabbitmq',
       );
     });
   });

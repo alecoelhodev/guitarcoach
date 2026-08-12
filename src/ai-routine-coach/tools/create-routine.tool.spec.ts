@@ -1,4 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
+import { meters } from '../../observability/metrics/meters';
 import { createRoutine, CreateRoutineArgsSchema } from './create-routine.tool';
 import { RoutineCoachContext } from '../agent/routine-coach.context';
 
@@ -24,6 +25,57 @@ function buildContext(): RoutineCoachContext {
 }
 
 describe('createRoutine', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('records ai_tool_duration_ms with the tool name and a success outcome', async () => {
+    const recordSpy = jest.spyOn(meters.aiToolDurationMs, 'record');
+    const deps = buildDeps();
+    deps.tasksService.findById.mockResolvedValue({ id: TASK_ID_1 });
+    deps.routinesService.create.mockResolvedValue({
+      id: ROUTINE_ID,
+      title: 'Daily warm-up',
+    });
+
+    await createRoutine(
+      deps,
+      USER_ID,
+      {
+        name: 'Daily warm-up',
+        tasks: [{ taskId: TASK_ID_1, durationMinutes: 15, order: 1 }],
+      },
+      buildContext(),
+    );
+
+    expect(recordSpy).toHaveBeenCalledWith(expect.any(Number), {
+      tool: 'create_routine',
+      outcome: 'success',
+    });
+  });
+
+  it('records ai_tool_duration_ms with an error outcome on an unexpected failure', async () => {
+    const recordSpy = jest.spyOn(meters.aiToolDurationMs, 'record');
+    const deps = buildDeps();
+    deps.tasksService.findById.mockResolvedValue({ id: TASK_ID_1 });
+    deps.routinesService.create.mockRejectedValue(new Error('db is down'));
+
+    await expect(
+      createRoutine(
+        deps,
+        USER_ID,
+        {
+          name: 'Daily warm-up',
+          tasks: [{ taskId: TASK_ID_1, durationMinutes: 15, order: 1 }],
+        },
+        buildContext(),
+      ),
+    ).rejects.toThrow('db is down');
+
+    expect(recordSpy).toHaveBeenCalledWith(expect.any(Number), {
+      tool: 'create_routine',
+      outcome: 'error',
+    });
+  });
+
   it('has no userId parameter in its Zod schema', () => {
     expect(CreateRoutineArgsSchema.shape).not.toHaveProperty('userId');
   });

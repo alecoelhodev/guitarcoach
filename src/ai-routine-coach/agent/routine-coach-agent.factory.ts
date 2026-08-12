@@ -4,6 +4,7 @@ import { Agent, setDefaultOpenAIClient } from '@openai/agents';
 import OpenAI from 'openai';
 import { EnvironmentVariables } from '../../config/env.validation';
 import { OPENAI_CLIENT } from '../../ai-practice-planner/openai/openai.constants';
+import { SecurityEventLogger } from '../../observability/security-event.logger';
 import { PracticeSessionsService } from '../../practice-sessions/practice-sessions.service';
 import { RoutinesService } from '../../routines/routines.service';
 import { TasksService } from '../../tasks/tasks.service';
@@ -13,7 +14,7 @@ import { buildGetRecentRoutinesTool } from '../tools/get-recent-routines.tool';
 import { buildGetTaskStatsTool } from '../tools/get-task-stats.tool';
 import { buildGetUserTasksTool } from '../tools/get-user-tasks.tool';
 import { RoutineCoachContext } from './routine-coach.context';
-import { RoutineCoachInputGuardrail } from './routine-coach.guardrail';
+import { buildRoutineCoachInputGuardrail } from './routine-coach.guardrail';
 import { ROUTINE_COACH_INSTRUCTIONS } from './routine-coach.instructions';
 
 // Default (singleton) Nest scope is required: setDefaultOpenAIClient() is a
@@ -29,6 +30,7 @@ export class RoutineCoachAgentFactory {
     practiceSessionsService: PracticeSessionsService,
     @Inject(OPENAI_CLIENT) client: OpenAI,
     configService: ConfigService<EnvironmentVariables, true>,
+    securityEventLogger: SecurityEventLogger,
   ) {
     setDefaultOpenAIClient(client);
 
@@ -43,7 +45,7 @@ export class RoutineCoachAgentFactory {
         buildGetTaskStatsTool({ practiceSessionsService }),
         buildCreateRoutineTool({ routinesService, tasksService }),
       ],
-      inputGuardrails: [RoutineCoachInputGuardrail],
+      inputGuardrails: [buildRoutineCoachInputGuardrail(securityEventLogger)],
     });
   }
 

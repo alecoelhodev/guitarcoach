@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - AI provider error spike",
+  "documentation": {
+    "content": "More than 10 AI provider/agent request errors (OpenAI Responses API or the Agents SDK run) in a 15-minute window. Backed by ai_requests_total{outcome=\"error\"} (src/ai-practice-planner/openai/openai-responses.service.ts, src/ai-routine-coach/agent/agent-runner.ts). Per this repo's architecture decision, an OpenAI outage does not affect /health/ready — this alert is the intended way to notice AI-specific degradation instead. VERIFY the metric.type filter below in Metrics Explorer before applying (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "AI error count > 10 over 15 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/ai_requests_total/counter\" AND metric.label.\"outcome\"=\"error\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 10,
+        "duration": "900s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "900s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

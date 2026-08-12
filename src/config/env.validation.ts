@@ -42,6 +42,15 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(300 * 1024 * 1024),
+  LOG_LEVEL: z
+    .enum(['verbose', 'debug', 'log', 'warn', 'error', 'fatal'])
+    .default('log'),
+  // z.coerce.boolean() would coerce the string "false" to `true` (any
+  // non-empty string is JS-truthy) — require an explicit true/false string.
+  METRICS_EXPORT_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 export type EnvironmentVariables = z.infer<typeof envSchema>;

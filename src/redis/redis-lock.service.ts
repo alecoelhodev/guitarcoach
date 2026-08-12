@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { createClient, type RedisClientType } from '@redis/client';
+import { meters } from '../observability/metrics/meters';
 
 // GET+DEL must run as one atomic step (Lua script) so a lock is only ever
 // released by the holder that acquired it. Without this check, a holder
@@ -60,20 +61,36 @@ export class RedisLockService implements OnModuleInit, OnModuleDestroy {
   // `release` so only its own lock can be released.
   async acquire(key: string, ttlMs: number): Promise<string | null> {
     const token = randomUUID();
-    const result = await this.client.set(key, token, {
-      condition: 'NX',
-      expiration: { type: 'PX', value: ttlMs },
-    });
+    try {
+      const result = await this.client.set(key, token, {
+        condition: 'NX',
+        expiration: { type: 'PX', value: ttlMs },
+      });
 
-    return result === null ? null : token;
+      return result === null ? null : token;
+    } catch (error) {
+      meters.redisOperationFailuresTotal.add(1, {
+        client: 'lock',
+        operation: 'acquire',
+      });
+      throw error;
+    }
   }
 
   // Safe to call even if the lock already expired or was released elsewhere;
   // the CAS check in RELEASE_SCRIPT makes this a no-op in that case.
   async release(key: string, token: string): Promise<void> {
-    await this.client.eval(RELEASE_SCRIPT, {
-      keys: [key],
-      arguments: [token],
-    });
+    try {
+      await this.client.eval(RELEASE_SCRIPT, {
+        keys: [key],
+        arguments: [token],
+      });
+    } catch (error) {
+      meters.redisOperationFailuresTotal.add(1, {
+        client: 'lock',
+        operation: 'release',
+      });
+      throw error;
+    }
   }
 }

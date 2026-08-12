@@ -1,3 +1,4 @@
+import { meters } from '../../observability/metrics/meters';
 import { getUserTasks, GetUserTasksArgsSchema } from './get-user-tasks.tool';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
@@ -34,6 +35,19 @@ describe('getUserTasks', () => {
     tasksService = {
       findAllUnpaginated: jest.fn().mockResolvedValue(CATALOG),
     };
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('records ai_tool_duration_ms with the tool name and a success outcome', async () => {
+    const recordSpy = jest.spyOn(meters.aiToolDurationMs, 'record');
+
+    await getUserTasks({ tasksService }, USER_ID, {});
+
+    expect(recordSpy).toHaveBeenCalledWith(expect.any(Number), {
+      tool: 'get_user_tasks',
+      outcome: 'success',
+    });
   });
 
   it('has no userId parameter in its Zod schema', () => {

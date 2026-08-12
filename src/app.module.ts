@@ -16,6 +16,8 @@ import { EnvironmentVariables } from './config/env.validation';
 import { GcpStorageModule } from './gcp-storage/gcp-storage.module';
 import { HealthModule } from './health/health.module';
 import { PracticeSessionsModule } from './practice-sessions/practice-sessions.module';
+import { ObservabilityModule } from './observability/observability.module';
+import { SecurityEventLogger } from './observability/security-event.logger';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import { RedisLockModule } from './redis/redis-lock.module';
@@ -26,6 +28,7 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     AppConfigModule,
+    ObservabilityModule,
     PrismaModule,
     GcpStorageModule,
     RedisRateLimitStorageModule,
@@ -55,11 +58,14 @@ import { UsersModule } from './users/users.module';
       }),
     }),
     AuthModule.forRootAsync({
-      inject: [PrismaService, RedisRateLimitStorage],
+      inject: [PrismaService, RedisRateLimitStorage, SecurityEventLogger],
       useFactory: (
         prisma: PrismaService,
         redisRateLimitStorage: RedisRateLimitStorage,
-      ) => ({ auth: createAuth(prisma, redisRateLimitStorage) }),
+        securityEventLogger: SecurityEventLogger,
+      ) => ({
+        auth: createAuth(prisma, redisRateLimitStorage, securityEventLogger),
+      }),
     }),
     HealthModule,
     UsersModule,

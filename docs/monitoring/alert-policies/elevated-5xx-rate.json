@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - elevated 5xx rate",
+  "documentation": {
+    "content": "More than 20 5xx responses in a 5-minute window. Backed by the http_requests_total OTel counter (src/observability/http-observability.interceptor.ts), labeled by route template/method/statusCode (low-cardinality — no raw URLs or IDs). Starting threshold is an absolute count, not a % of traffic, since no production baseline exists yet — revisit once real traffic volume is known. VERIFY the metric.type filter below in Metrics Explorer before applying: GCP's OTLP ingestion path may use a different prefix than assumed here (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "5xx count > 20 over 5 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/http_requests_total/counter\" AND metric.label.\"statusCode\">=500",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 20,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - Redis dependency failures",
+  "documentation": {
+    "content": "More than 10 Redis operation failures (lock/cache/rate-limit clients) in a 5-minute window. Backed by redis_operation_failures_total (src/redis/redis-lock.service.ts, src/tasks/tasks.service.ts, src/auth/redis-rate-limit-storage.ts). Most Redis-backed features fail open, so this is an early-warning signal, not necessarily user-facing yet — check /health/ready and the reorder-lock's 503s (fail-closed by design) to gauge actual impact. VERIFY the metric.type filter below in Metrics Explorer before applying (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Redis failures > 10 over 5 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/redis_operation_failures_total/counter\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 10,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

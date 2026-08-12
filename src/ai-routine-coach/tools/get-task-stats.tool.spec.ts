@@ -1,3 +1,4 @@
+import { meters } from '../../observability/metrics/meters';
 import { getTaskStats, GetTaskStatsArgsSchema } from './get-task-stats.tool';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
@@ -10,6 +11,19 @@ describe('getTaskStats', () => {
 
   beforeEach(() => {
     practiceSessionsService = { getTaskStats: jest.fn().mockResolvedValue([]) };
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('records ai_tool_duration_ms with the tool name and a success outcome', async () => {
+    const recordSpy = jest.spyOn(meters.aiToolDurationMs, 'record');
+
+    await getTaskStats({ practiceSessionsService }, USER_ID, {});
+
+    expect(recordSpy).toHaveBeenCalledWith(expect.any(Number), {
+      tool: 'get_task_stats',
+      outcome: 'success',
+    });
   });
 
   it('has no userId parameter in its Zod schema', () => {

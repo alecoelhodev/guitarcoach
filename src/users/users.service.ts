@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, User } from '../generated/prisma/client';
+import { SecurityEventLogger } from '../observability/security-event.logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -25,7 +26,10 @@ function isPrismaErrorCode(
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly securityEventLogger: SecurityEventLogger,
+  ) {}
 
   findAll(): Promise<User[]> {
     return this.prisma.user.findMany();
@@ -63,7 +67,7 @@ export class UsersService {
     }
   }
 
-  async remove(id: string): Promise<void> {
+  async remove(actorId: string, id: string): Promise<void> {
     try {
       await this.prisma.user.delete({ where: { id } });
     } catch (error) {
@@ -72,5 +76,15 @@ export class UsersService {
       }
       throw error;
     }
+
+    // Audit trail entry — only reached once the delete has actually
+    // committed, never on a failed/not-found delete.
+    this.securityEventLogger.log({
+      eventType: 'user.deleted',
+      outcome: 'success',
+      actorId,
+      targetType: 'user',
+      targetId: id,
+    });
   }
 }

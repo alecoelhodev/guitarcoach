@@ -10,6 +10,7 @@ import {
   MIN_LOOKBACK_DAYS,
 } from './tool-constants';
 import { requireUserId } from './require-user-id';
+import { withToolDuration } from './tool-observability';
 
 const logger = new Logger('get_recent_routines');
 
@@ -58,12 +59,14 @@ export async function getRecentRoutines(
   userId: string,
   args: GetRecentRoutinesArgs,
 ): Promise<RecentRoutineResult[]> {
-  logger.debug('get_recent_routines invoked');
-  const routines = await deps.routinesService.findRecent(
-    userId,
-    args.days ?? DEFAULT_LOOKBACK_DAYS,
-  );
-  return routines.map(toResult);
+  return withToolDuration('get_recent_routines', async () => {
+    logger.debug('get_recent_routines invoked');
+    const routines = await deps.routinesService.findRecent(
+      userId,
+      args.days ?? DEFAULT_LOOKBACK_DAYS,
+    );
+    return routines.map(toResult);
+  });
 }
 
 export function buildGetRecentRoutinesTool(deps: {

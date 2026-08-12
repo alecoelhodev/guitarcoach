@@ -11,6 +11,7 @@ import {
   MAX_TASKS_PER_ROUTINE,
   MAX_TOTAL_ROUTINE_DURATION_MINUTES,
 } from './tool-constants';
+import { withToolDuration } from './tool-observability';
 
 const logger = new Logger('CreateRoutineTool');
 
@@ -47,92 +48,94 @@ export async function createRoutine(
   rawArgs: unknown,
   context: RoutineCoachContext,
 ): Promise<CreateRoutineResult> {
-  logger.debug('create_routine invoked');
+  return withToolDuration('create_routine', async () => {
+    logger.debug('create_routine invoked');
 
-  // Re-validate independently -- don't assume the SDK's upstream schema
-  // validation held by the time this function is invoked (mirrors the
-  // sibling CreateRoutineTool in ai-practice-planner).
-  const parsed = CreateRoutineArgsSchema.safeParse(rawArgs);
-  if (!parsed.success) {
-    return { success: false, error: parsed.error.message };
-  }
-  const args = parsed.data;
+    // Re-validate independently -- don't assume the SDK's upstream schema
+    // validation held by the time this function is invoked (mirrors the
+    // sibling CreateRoutineTool in ai-practice-planner).
+    const parsed = CreateRoutineArgsSchema.safeParse(rawArgs);
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.message };
+    }
+    const args = parsed.data;
 
-  const taskIds = args.tasks.map((task) => task.taskId);
-  if (new Set(taskIds).size !== taskIds.length) {
-    return {
-      success: false,
-      error: 'Duplicate taskId in create_routine tasks',
-    };
-  }
-
-  const orders = args.tasks.map((task) => task.order).sort((a, b) => a - b);
-  const isContiguousFromOne = orders.every(
-    (order, index) => order === index + 1,
-  );
-  if (!isContiguousFromOne) {
-    return {
-      success: false,
-      error:
-        'Task order values must be exactly 1..N with no gaps or duplicates',
-    };
-  }
-
-  const totalDuration = args.tasks.reduce(
-    (sum, task) => sum + task.durationMinutes,
-    0,
-  );
-  if (totalDuration > MAX_TOTAL_ROUTINE_DURATION_MINUTES) {
-    return {
-      success: false,
-      error: `Total routine duration (${totalDuration}m) exceeds the maximum of ${MAX_TOTAL_ROUTINE_DURATION_MINUTES}m`,
-    };
-  }
-
-  const orderedTasks = [...args.tasks].sort((a, b) => a.order - b.order);
-
-  try {
-    // Validate every task exists BEFORE any write -- narrows (does not
-    // eliminate) the partial-write window that the sequential addTask loop
-    // below is exposed to.
-    for (const taskId of new Set(taskIds)) {
-      await deps.tasksService.findById(taskId);
+    const taskIds = args.tasks.map((task) => task.taskId);
+    if (new Set(taskIds).size !== taskIds.length) {
+      return {
+        success: false,
+        error: 'Duplicate taskId in create_routine tasks',
+      };
     }
 
-    const routine = await deps.routinesService.create(userId, {
-      title: args.name,
-    });
+    const orders = args.tasks.map((task) => task.order).sort((a, b) => a - b);
+    const isContiguousFromOne = orders.every(
+      (order, index) => order === index + 1,
+    );
+    if (!isContiguousFromOne) {
+      return {
+        success: false,
+        error:
+          'Task order values must be exactly 1..N with no gaps or duplicates',
+      };
+    }
 
-    // Sequential, not Promise.all: position must be assigned deterministically
-    // in the requested order.
-    for (const task of orderedTasks) {
-      await deps.routinesService.addTask(userId, routine.id, {
-        taskId: task.taskId,
-        position: task.order,
-        targetDurationMinutes: task.durationMinutes,
+    const totalDuration = args.tasks.reduce(
+      (sum, task) => sum + task.durationMinutes,
+      0,
+    );
+    if (totalDuration > MAX_TOTAL_ROUTINE_DURATION_MINUTES) {
+      return {
+        success: false,
+        error: `Total routine duration (${totalDuration}m) exceeds the maximum of ${MAX_TOTAL_ROUTINE_DURATION_MINUTES}m`,
+      };
+    }
+
+    const orderedTasks = [...args.tasks].sort((a, b) => a.order - b.order);
+
+    try {
+      // Validate every task exists BEFORE any write -- narrows (does not
+      // eliminate) the partial-write window that the sequential addTask loop
+      // below is exposed to.
+      for (const taskId of new Set(taskIds)) {
+        await deps.tasksService.findById(taskId);
+      }
+
+      const routine = await deps.routinesService.create(userId, {
+        title: args.name,
       });
-    }
 
-    context.createdRoutine = {
-      routineId: routine.id,
-      title: routine.title,
-      taskCount: orderedTasks.length,
-    };
-    logger.log(`Routine successfully persisted (routineId=${routine.id})`);
+      // Sequential, not Promise.all: position must be assigned deterministically
+      // in the requested order.
+      for (const task of orderedTasks) {
+        await deps.routinesService.addTask(userId, routine.id, {
+          taskId: task.taskId,
+          position: task.order,
+          targetDurationMinutes: task.durationMinutes,
+        });
+      }
 
-    return {
-      success: true,
-      routineId: routine.id,
-      title: routine.title,
-      taskCount: orderedTasks.length,
-    };
-  } catch (error) {
-    if (isKnownToolError(error)) {
-      logger.warn(`create_routine rejected: ${error.message}`);
-      return { success: false, error: error.message };
+      context.createdRoutine = {
+        routineId: routine.id,
+        title: routine.title,
+        taskCount: orderedTasks.length,
+      };
+      logger.log(`Routine successfully persisted (routineId=${routine.id})`);
+
+      return {
+        success: true,
+        routineId: routine.id,
+        title: routine.title,
+        taskCount: orderedTasks.length,
+      };
+    } catch (error) {
+      if (isKnownToolError(error)) {
+        logger.warn(`create_routine rejected: ${error.message}`);
+        return { success: false, error: error.message };
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export function buildCreateRoutineTool(deps: CreateRoutineDeps) {

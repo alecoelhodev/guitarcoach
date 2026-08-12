@@ -12,6 +12,7 @@ import {
   ToolCallError,
 } from '@openai/agents';
 import OpenAI from 'openai';
+import { meters } from '../observability/metrics/meters';
 import { AGENT_RUNNER } from './agent/agent-runner';
 import { RoutineCoachAgentFactory } from './agent/routine-coach-agent.factory';
 import { RoutineCoachContext } from './agent/routine-coach.context';
@@ -44,6 +45,8 @@ describe('AiRoutineCoachService', () => {
   });
 
   describe('handleRequest', () => {
+    afterEach(() => jest.restoreAllMocks());
+
     it('runs the agent with the authenticated user in context, not from the message', async () => {
       agentRunner.run.mockResolvedValue({ finalOutput: 'Done.' });
 
@@ -117,6 +120,19 @@ describe('AiRoutineCoachService', () => {
       await expect(
         service.handleRequest(USER_ID, 'Create a 30-minute routine.'),
       ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('records ai_max_turns_total when max turns is exceeded', async () => {
+      const addSpy = jest.spyOn(meters.aiMaxTurnsTotal, 'add');
+      agentRunner.run.mockRejectedValue(
+        new MaxTurnsExceededError('too many turns'),
+      );
+
+      await expect(
+        service.handleRequest(USER_ID, 'Create a 30-minute routine.'),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(addSpy).toHaveBeenCalledWith(1);
     });
 
     it('maps invalid tool arguments to BadRequestException', async () => {

@@ -48,6 +48,8 @@ describe('validate', () => {
       OPENAI_REQUEST_TIMEOUT_MS: 30_000,
       HEALTH_MEMORY_HEAP_THRESHOLD_BYTES: 314_572_800,
       HEALTH_MEMORY_RSS_THRESHOLD_BYTES: 314_572_800,
+      LOG_LEVEL: 'log',
+      METRICS_EXPORT_ENABLED: false,
     });
   });
 
@@ -464,5 +466,75 @@ describe('validate', () => {
 
     expect(result.HEALTH_MEMORY_HEAP_THRESHOLD_BYTES).toBe(314_572_800);
     expect(result.HEALTH_MEMORY_RSS_THRESHOLD_BYTES).toBe(314_572_800);
+  });
+
+  it('applies defaults for LOG_LEVEL and METRICS_EXPORT_ENABLED when omitted', () => {
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+    });
+
+    expect(result.LOG_LEVEL).toBe('log');
+    expect(result.METRICS_EXPORT_ENABLED).toBe(false);
+  });
+
+  it('fails when LOG_LEVEL is not one of the known levels', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+        LOG_LEVEL: 'trace',
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
+  it('parses METRICS_EXPORT_ENABLED="true" as a boolean true', () => {
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+      METRICS_EXPORT_ENABLED: 'true',
+    });
+
+    expect(result.METRICS_EXPORT_ENABLED).toBe(true);
+  });
+
+  it('does not fall back to JS-truthy coercion for METRICS_EXPORT_ENABLED="false"', () => {
+    const result = validate({
+      NODE_ENV: 'test',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+      METRICS_EXPORT_ENABLED: 'false',
+    });
+
+    expect(result.METRICS_EXPORT_ENABLED).toBe(false);
   });
 });
