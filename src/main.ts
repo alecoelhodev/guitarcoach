@@ -4,11 +4,24 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config/env.validation';
+import { correlationIdMiddleware } from './observability/correlation-id.middleware';
+import { StructuredLoggerService } from './observability/structured-logger.service';
 import { routineEventsRmqOptions } from './routines/events/rabbitmq.constants';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // bufferLogs holds every log emitted during module initialization until
+  // useLogger() below is called, so even early bootstrap/DI logs go through
+  // the structured logger instead of Nest's default console logger.
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: false,
+    bufferLogs: true,
+  });
   const configService = app.get(ConfigService<EnvironmentVariables, true>);
+
+  app.useLogger(app.get(StructuredLoggerService));
+  // Registered before the auth guard sees any request, so every request —
+  // including ones that fail authentication — gets a correlated request ID.
+  app.use(correlationIdMiddleware);
 
   const apiPrefix = configService.get('API_PREFIX', { infer: true });
   const apiVersion = configService.get('API_VERSION', { infer: true });

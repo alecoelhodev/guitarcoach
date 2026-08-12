@@ -47,7 +47,10 @@ export class UsersController {
   @Delete(':id')
   @Roles(['admin'])
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string): Promise<void> {
-    return this.usersService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @Session() session: UserSession,
+  ): Promise<void> {
+    return this.usersService.remove(session.user.id, id);
   }
 }

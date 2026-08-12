@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { createClient, type RedisClientType } from '@redis/client';
 import type { BetterAuthRateLimitStorage, RateLimit } from 'better-auth';
+import { meters } from '../observability/metrics/meters';
+import { SecurityEventLogger } from '../observability/security-event.logger';
 
 // INCR + EXPIRE must run as one atomic step so concurrent requests can't both
 // observe count 1 and each (re)apply the TTL, which would keep resetting the
@@ -32,6 +34,14 @@ export class RedisRateLimitStorage
 {
   private readonly logger = new Logger(RedisRateLimitStorage.name);
   private readonly client: RedisClientType;
+  // Not injected via Nest DI: this class is constructed with `new` from a
+  // useFactory in redis-rate-limit-storage.module.ts (mirroring the redisUrl
+  // primitive-arg pattern there), so there's no constructor injection point
+  // to resolve SecurityEventLogger from. It has no dependencies of its own
+  // (see security-event.logger.ts) and its Logger writes go through the same
+  // app-wide structured logger regardless of how it's instantiated, so a
+  // direct instantiation here is equivalent to DI in practice.
+  private readonly securityEventLogger = new SecurityEventLogger();
 
   constructor(redisUrl: string) {
     // disableOfflineQueue makes consume/get/set reject immediately when the
@@ -92,13 +102,39 @@ export class RedisRateLimitStorage
       if (count <= rule.max) {
         return { allowed: true, retryAfter: null };
       }
+
+      // Redis is healthy and the limit is genuinely exceeded — distinct from
+      // the catch block below, which is a Redis-outage fail-open and must
+      // not be counted/logged as a security event.
+      meters.rateLimitDeniedTotal.add(1);
+      this.securityEventLogger.log({
+        eventType: 'rate_limit.denied',
+        outcome: 'denied',
+        targetType: 'route',
+        targetId: this.routeFromKey(key),
+        detail: { window: rule.window, max: rule.max },
+      });
+
       return { allowed: false, retryAfter: ttl > 0 ? ttl : rule.window };
     } catch (error) {
+      meters.redisOperationFailuresTotal.add(1, {
+        client: 'rate-limit',
+        operation: 'consume',
+      });
       this.logger.warn(
         `Rate limit check failed for key "${key}"; allowing request`,
         error,
       );
       return { allowed: true, retryAfter: null };
     }
+  }
+
+  // Better Auth builds `key` as `createRateLimitKey(ip, path)` -> `${ip}|${path}`
+  // (@better-auth/core/utils/ip.ts). Only the path is a safe, low-cardinality
+  // identifier for a security event; the IP is PII we don't need to persist
+  // beyond the minimum identifier necessary (see security-event.logger.ts).
+  private routeFromKey(key: string): string {
+    const separatorIndex = key.indexOf('|');
+    return separatorIndex === -1 ? 'unknown' : key.slice(separatorIndex + 1);
   }
 }

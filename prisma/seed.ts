@@ -13,6 +13,7 @@ import {
 } from '../src/generated/prisma/client';
 import { createAuth } from '../src/auth/auth';
 import { RedisRateLimitStorage } from '../src/auth/redis-rate-limit-storage';
+import { SecurityEventLogger } from '../src/observability/security-event.logger';
 import { PrismaService } from '../src/prisma/prisma.service';
 
 expand(dotenv.config());
@@ -473,6 +474,7 @@ const prisma = new PrismaService();
 const auth = createAuth(
   prisma,
   new RedisRateLimitStorage(process.env.REDIS_URL),
+  new SecurityEventLogger(),
 );
 
 async function seedUser(

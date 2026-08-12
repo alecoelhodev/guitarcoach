@@ -1,7 +1,8 @@
-import { BadGatewayException } from '@nestjs/common';
+import { BadGatewayException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { EnvironmentVariables } from '../../config/env.validation';
+import { meters } from '../../observability/metrics/meters';
 import { PracticePlan } from '../dto/practice-plan.schema';
 import { CreateRoutineResult } from '../tools/create-routine.types';
 import { OpenAiResponsesService } from './openai-responses.service';
@@ -68,7 +69,130 @@ describe('OpenAiResponsesService', () => {
     );
   });
 
+  afterEach(() => jest.restoreAllMocks());
+
   describe('generatePracticePlan', () => {
+    it('records token usage and request metrics, and logs metadata only', async () => {
+      const plan = buildPracticePlan();
+      const promptText = 'Plan me a routine focusing on jazz chords';
+      client.responses.parse.mockResolvedValue({
+        status: 'completed',
+        id: PREVIOUS_RESPONSE_ID,
+        output_parsed: plan,
+        usage: {
+          input_tokens: 120,
+          output_tokens: 45,
+          total_tokens: 165,
+        },
+      });
+      // aiTokensTotal and aiRequestsTotal are both Counters, which share one
+      // underlying no-op `add` method in tests (no MeterProvider registered)
+      // -- tokensSpy/requestsSpy are the same spy in practice; kept as two
+      // names purely for assertion readability below.
+      const tokensSpy = jest.spyOn(meters.aiTokensTotal, 'add');
+      const requestsSpy = jest.spyOn(meters.aiRequestsTotal, 'add');
+      const durationSpy = jest.spyOn(meters.aiRequestDurationMs, 'record');
+      const logSpy = jest
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation(() => undefined);
+
+      await service.generatePracticePlan(promptText);
+
+      expect(tokensSpy).toHaveBeenCalledWith(120, {
+        provider: 'openai-responses',
+        kind: 'input',
+      });
+      expect(tokensSpy).toHaveBeenCalledWith(45, {
+        provider: 'openai-responses',
+        kind: 'output',
+      });
+      expect(tokensSpy).toHaveBeenCalledWith(165, {
+        provider: 'openai-responses',
+        kind: 'total',
+      });
+      expect(requestsSpy).toHaveBeenCalledWith(1, {
+        provider: 'openai-responses',
+        outcome: 'success',
+      });
+      expect(durationSpy).toHaveBeenCalledWith(expect.any(Number), {
+        provider: 'openai-responses',
+      });
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      const [, meta] = logSpy.mock.calls[0] as [
+        string,
+        Record<string, unknown>,
+      ];
+      expect(typeof meta.durationMs).toBe('number');
+      expect(meta).toMatchObject({
+        model: MODEL,
+        tokensInput: 120,
+        tokensOutput: 45,
+        tokensTotal: 165,
+        outcome: 'success',
+      });
+      expect(Object.keys(meta).sort()).toEqual(
+        [
+          'durationMs',
+          'model',
+          'tokensInput',
+          'tokensOutput',
+          'tokensTotal',
+          'outcome',
+        ].sort(),
+      );
+      // Never the prompt text or generated plan content, only metadata.
+      const loggedPayload = JSON.stringify(logSpy.mock.calls[0]);
+      expect(loggedPayload).not.toContain(promptText);
+      expect(loggedPayload).not.toContain(plan.title);
+    });
+
+    it('records an error outcome and no token usage when the call throws', async () => {
+      const error = new Error('network blip');
+      client.responses.parse.mockRejectedValue(error);
+      // aiRequestsTotal/aiTokensTotal share the same underlying `add` method
+      // under the no-op OTel meter used in tests (no MeterProvider
+      // registered), so a single spy on that method sees every counter call
+      // made during the request -- asserting no call carries a `kind`
+      // attribute is how "no token usage was recorded" is actually provable
+      // here, rather than asserting the shared spy was never called at all.
+      const addSpy = jest.spyOn(meters.aiRequestsTotal, 'add');
+
+      await expect(
+        service.generatePracticePlan('Plan me a routine'),
+      ).rejects.toBe(error);
+
+      expect(addSpy).toHaveBeenCalledWith(1, {
+        provider: 'openai-responses',
+        outcome: 'error',
+      });
+      const tokenCalls = addSpy.mock.calls.filter(
+        ([, attributes]) =>
+          (attributes as Record<string, unknown> | undefined)?.kind !==
+          undefined,
+      );
+      expect(tokenCalls).toHaveLength(0);
+    });
+
+    it('records an error outcome when the response completes with a non-completed status', async () => {
+      client.responses.parse.mockResolvedValue({
+        status: 'incomplete',
+        id: PREVIOUS_RESPONSE_ID,
+        incomplete_details: { reason: 'max_output_tokens' },
+        output_parsed: null,
+      });
+      const requestsSpy = jest.spyOn(meters.aiRequestsTotal, 'add');
+
+      await expect(
+        service.generatePracticePlan('Plan me a routine'),
+      ).rejects.toThrow(BadGatewayException);
+
+      expect(requestsSpy).toHaveBeenCalledWith(1, {
+        provider: 'openai-responses',
+        outcome: 'error',
+      });
+    });
+
     it('returns the parsed plan and previousResponseId on a completed response', async () => {
       const plan = buildPracticePlan();
       client.responses.parse.mockResolvedValue({

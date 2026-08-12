@@ -14,6 +14,7 @@ import {
   ToolCallError,
 } from '@openai/agents';
 import OpenAI from 'openai';
+import { meters } from '../observability/metrics/meters';
 import { AGENT_RUNNER } from './agent/agent-runner';
 import type { AgentRunner } from './agent/agent-runner';
 import { RoutineCoachContext } from './agent/routine-coach.context';
@@ -71,6 +72,7 @@ export class AiRoutineCoachService {
 
     if (error instanceof MaxTurnsExceededError) {
       this.logger.warn('max turns exceeded');
+      meters.aiMaxTurnsTotal.add(1);
       return new BadGatewayException(
         'The routine coach could not complete this request in a reasonable number of steps.',
       );

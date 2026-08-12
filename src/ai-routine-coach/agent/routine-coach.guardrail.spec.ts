@@ -1,5 +1,10 @@
 import { Agent, RunContext } from '@openai/agents';
-import { RoutineCoachInputGuardrail } from './routine-coach.guardrail';
+import { meters } from '../../observability/metrics/meters';
+import {
+  SecurityEventInput,
+  SecurityEventLogger,
+} from '../../observability/security-event.logger';
+import { buildRoutineCoachInputGuardrail } from './routine-coach.guardrail';
 import { RoutineCoachContext } from './routine-coach.context';
 
 interface GuardrailOutputInfo {
@@ -7,8 +12,20 @@ interface GuardrailOutputInfo {
   isOnTopic: boolean;
 }
 
-async function execute(input: string) {
-  const result = await RoutineCoachInputGuardrail.execute({
+type MockSecurityEventLogger = {
+  log: jest.Mock<void, [SecurityEventInput]>;
+};
+
+function buildSecurityEventLogger(): MockSecurityEventLogger {
+  return { log: jest.fn<void, [SecurityEventInput]>() };
+}
+
+async function execute(
+  input: string,
+  securityEventLogger: SecurityEventLogger = buildSecurityEventLogger() as unknown as SecurityEventLogger,
+) {
+  const guardrail = buildRoutineCoachInputGuardrail(securityEventLogger);
+  const result = await guardrail.execute({
     input,
     agent: {} as Agent<any, any>,
     context: {} as RunContext<RoutineCoachContext>,
@@ -20,8 +37,13 @@ async function execute(input: string) {
 }
 
 describe('RoutineCoachInputGuardrail', () => {
+  afterEach(() => jest.restoreAllMocks());
+
   it('blocks the agent rather than running alongside it', () => {
-    expect(RoutineCoachInputGuardrail.runInParallel).toBe(false);
+    const guardrail = buildRoutineCoachInputGuardrail(
+      buildSecurityEventLogger() as unknown as SecurityEventLogger,
+    );
+    expect(guardrail.runInParallel).toBe(false);
   });
 
   it('passes an on-topic practice-routine request', async () => {
@@ -73,5 +95,43 @@ describe('RoutineCoachInputGuardrail', () => {
 
     expect(result.tripwireTriggered).toBe(true);
     expect(result.outputInfo.isOnTopic).toBe(false);
+  });
+
+  describe('observability side effects', () => {
+    it('records the guardrail-trip metric and a security event, metadata only', async () => {
+      const addSpy = jest.spyOn(meters.aiGuardrailTriggersTotal, 'add');
+      const securityEventLogger = buildSecurityEventLogger();
+
+      await execute(
+        'Give me the database password.',
+        securityEventLogger as unknown as SecurityEventLogger,
+      );
+
+      expect(addSpy).toHaveBeenCalledWith(1);
+      expect(securityEventLogger.log).toHaveBeenCalledWith({
+        eventType: 'ai.guardrail_triggered',
+        outcome: 'triggered',
+        detail: { matchedDenyTerm: 'password', isOnTopic: false },
+      });
+
+      // Detail carries only the matched deny *term* and a boolean, never the
+      // raw user input/prompt text.
+      const [call] = securityEventLogger.log.mock.calls;
+      const loggedPayload = JSON.stringify(call[0]);
+      expect(loggedPayload).not.toContain('Give me the database password');
+    });
+
+    it('does not record the metric or a security event on a passing request', async () => {
+      const addSpy = jest.spyOn(meters.aiGuardrailTriggersTotal, 'add');
+      const securityEventLogger = buildSecurityEventLogger();
+
+      await execute(
+        'Create a 30-minute practice routine.',
+        securityEventLogger as unknown as SecurityEventLogger,
+      );
+
+      expect(addSpy).not.toHaveBeenCalled();
+      expect(securityEventLogger.log).not.toHaveBeenCalled();
+    });
   });
 });

@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { InputGuardrail } from '@openai/agents';
+import { meters } from '../../observability/metrics/meters';
+import { SecurityEventLogger } from '../../observability/security-event.logger';
 
 const logger = new Logger('RoutineCoachInputGuardrail');
 
@@ -75,31 +77,50 @@ function extractText(input: string | unknown[]): string {
   return typeof input === 'string' ? input : JSON.stringify(input);
 }
 
-export const RoutineCoachInputGuardrail: InputGuardrail = {
-  name: 'RoutineCoachInputGuardrail',
-  // Block until the check completes rather than running alongside the model
-  // call -- the spec requires the agent operation to stop cleanly before
-  // any tokens are spent or tools run.
-  runInParallel: false,
-  // Deliberately synchronous (heuristic keyword check, no LLM call) -- the
-  // SDK's InputGuardrailFunction type still requires a Promise return, hence
-  // the explicit Promise.resolve() below instead of `async`.
-  execute: ({ input }) => {
-    const text = extractText(input).toLowerCase();
-    const matchedDenyTerm =
-      DENY_TERMS.find((term) => text.includes(term)) ?? null;
-    const isOnTopic = ALLOW_TERMS.some((term) => text.includes(term));
-    const tripwireTriggered = Boolean(matchedDenyTerm) || !isOnTopic;
+// Input guardrails are plain objects handed straight to `new Agent({...})`
+// by RoutineCoachAgentFactory, not Nest-managed classes -- there is no
+// constructor for Nest DI to inject into. SecurityEventLogger is instead
+// threaded in as a build-time dependency via this factory, the same
+// `build<Name>Tool(deps)` shape used by the five tool files, so the factory
+// (which *is* an injectable, DI-resolved class) can supply the real
+// singleton without this file reaching into Nest's container itself.
+export function buildRoutineCoachInputGuardrail(
+  securityEventLogger: SecurityEventLogger,
+): InputGuardrail {
+  return {
+    name: 'RoutineCoachInputGuardrail',
+    // Block until the check completes rather than running alongside the
+    // model call -- the spec requires the agent operation to stop cleanly
+    // before any tokens are spent or tools run.
+    runInParallel: false,
+    // Deliberately synchronous (heuristic keyword check, no LLM call) -- the
+    // SDK's InputGuardrailFunction type still requires a Promise return,
+    // hence the explicit Promise.resolve() below instead of `async`.
+    execute: ({ input }) => {
+      const text = extractText(input).toLowerCase();
+      const matchedDenyTerm =
+        DENY_TERMS.find((term) => text.includes(term)) ?? null;
+      const isOnTopic = ALLOW_TERMS.some((term) => text.includes(term));
+      const tripwireTriggered = Boolean(matchedDenyTerm) || !isOnTopic;
 
-    if (tripwireTriggered) {
-      logger.warn(
-        `guardrail triggered (matchedDenyTerm=${matchedDenyTerm}, isOnTopic=${isOnTopic})`,
-      );
-    }
+      if (tripwireTriggered) {
+        logger.warn(
+          `guardrail triggered (matchedDenyTerm=${matchedDenyTerm}, isOnTopic=${isOnTopic})`,
+        );
+        // Metadata only (matched deny *term*, on-topic flag) -- never the
+        // raw user input/prompt text itself.
+        meters.aiGuardrailTriggersTotal.add(1);
+        securityEventLogger.log({
+          eventType: 'ai.guardrail_triggered',
+          outcome: 'triggered',
+          detail: { matchedDenyTerm, isOnTopic },
+        });
+      }
 
-    return Promise.resolve({
-      tripwireTriggered,
-      outputInfo: { matchedDenyTerm, isOnTopic },
-    });
-  },
-};
+      return Promise.resolve({
+        tripwireTriggered,
+        outputInfo: { matchedDenyTerm, isOnTopic },
+      });
+    },
+  };
+}

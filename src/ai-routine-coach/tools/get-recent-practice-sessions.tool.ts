@@ -12,6 +12,7 @@ import {
   MIN_LOOKBACK_DAYS,
 } from './tool-constants';
 import { requireUserId } from './require-user-id';
+import { withToolDuration } from './tool-observability';
 
 const logger = new Logger('get_recent_practice_sessions');
 
@@ -73,12 +74,14 @@ export async function getRecentPracticeSessions(
   userId: string,
   args: GetRecentPracticeSessionsArgs,
 ): Promise<RecentPracticeSessionResult[]> {
-  logger.debug('get_recent_practice_sessions invoked');
-  const sessions = await deps.practiceSessionsService.findRecent(
-    userId,
-    args.days ?? DEFAULT_LOOKBACK_DAYS,
-  );
-  return sessions.map(toResult);
+  return withToolDuration('get_recent_practice_sessions', async () => {
+    logger.debug('get_recent_practice_sessions invoked');
+    const sessions = await deps.practiceSessionsService.findRecent(
+      userId,
+      args.days ?? DEFAULT_LOOKBACK_DAYS,
+    );
+    return sessions.map(toResult);
+  });
 }
 
 export function buildGetRecentPracticeSessionsTool(deps: {

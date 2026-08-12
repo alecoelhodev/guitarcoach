@@ -5,6 +5,7 @@ import { Task, TaskCategory } from '../../generated/prisma/client';
 import type { TasksService } from '../../tasks/tasks.service';
 import { RoutineCoachContext } from '../agent/routine-coach.context';
 import { requireUserId } from './require-user-id';
+import { withToolDuration } from './tool-observability';
 
 const logger = new Logger('get_user_tasks');
 
@@ -45,12 +46,14 @@ export async function getUserTasks(
   _userId: string,
   args: GetUserTasksArgs,
 ): Promise<UserTaskResult[]> {
-  logger.debug('get_user_tasks invoked');
-  const tasks = await deps.tasksService.findAllUnpaginated();
-  const filtered = args.category
-    ? tasks.filter((task) => task.category === args.category)
-    : tasks;
-  return filtered.map(toResult);
+  return withToolDuration('get_user_tasks', async () => {
+    logger.debug('get_user_tasks invoked');
+    const tasks = await deps.tasksService.findAllUnpaginated();
+    const filtered = args.category
+      ? tasks.filter((task) => task.category === args.category)
+      : tasks;
+    return filtered.map(toResult);
+  });
 }
 
 export function buildGetUserTasksTool(deps: { tasksService: TasksService }) {

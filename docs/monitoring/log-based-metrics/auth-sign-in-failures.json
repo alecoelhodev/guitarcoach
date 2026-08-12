@@ -1,0 +1,10 @@
+{
+  "name": "security_auth_sign_in_failures",
+  "description": "Failed sign-in attempts (auth.sign_in security events with outcome=failure), emitted by SecurityEventLogger via the auth.ts hooks.after hook.",
+  "filter": "jsonPayload.meta.eventCategory=\"security\" AND jsonPayload.message=\"auth.sign_in\" AND jsonPayload.meta.outcome=\"failure\"",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "unit": "1"
+  }
+}

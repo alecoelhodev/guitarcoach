@@ -1,0 +1,10 @@
+{
+  "name": "security_admin_action_failures",
+  "description": "Failed privileged operations (user.role_changed / user.banned / user.unbanned security events with outcome=failure), emitted by SecurityEventLogger via the auth.ts hooks.after hook.",
+  "filter": "jsonPayload.meta.eventCategory=\"security\" AND jsonPayload.message=(\"user.role_changed\" OR \"user.banned\" OR \"user.unbanned\") AND jsonPayload.meta.outcome=\"failure\"",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "unit": "1"
+  }
+}

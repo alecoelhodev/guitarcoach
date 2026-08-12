@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - weekly cleanup job failure",
+  "documentation": {
+    "content": "The weekly-routine-cleanup Cloud Run Job failed at least once. Backed by job_runs_total{outcome=\"failure\"} (src/weekly-routine-cleanup/weekly-routine-cleanup.service.ts). This job runs on a weekly schedule via Cloud Scheduler, so any failure is actionable immediately rather than waiting for a 'spike' — check `gcloud logging read` for the job's execution ID (correlationId) to see the full failure detail. VERIFY the metric.type filter below in Metrics Explorer before applying (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Job failure count > 0",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/job_runs_total/counter\" AND metric.label.\"outcome\"=\"failure\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "60s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "3600s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

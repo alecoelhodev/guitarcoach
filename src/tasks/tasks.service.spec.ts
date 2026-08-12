@@ -2,6 +2,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, Task } from '../generated/prisma/client';
+import { meters } from '../observability/metrics/meters';
 import { PrismaService } from '../prisma/prisma.service';
 import { TasksService } from './tasks.service';
 
@@ -201,6 +202,20 @@ describe('TasksService', () => {
       expect(prisma.task.findMany).toHaveBeenCalled();
     });
 
+    it('records a cache-get failure metric when the cache is down on read', async () => {
+      const addSpy = jest.spyOn(meters.redisOperationFailuresTotal, 'add');
+      cache.get.mockRejectedValue(new Error('Redis unavailable'));
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.task.count.mockResolvedValue(0);
+
+      await service.findAll({});
+
+      expect(addSpy).toHaveBeenCalledWith(1, {
+        client: 'cache',
+        operation: 'get',
+      });
+    });
+
     it('still returns the computed result when the cache is down on write', async () => {
       const tasks = [buildTask()];
       prisma.task.findMany.mockResolvedValue(tasks);
@@ -210,6 +225,20 @@ describe('TasksService', () => {
       await expect(service.findAll({})).resolves.toEqual({
         data: tasks,
         meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      });
+    });
+
+    it('records a cache-set failure metric when the cache is down on write', async () => {
+      const addSpy = jest.spyOn(meters.redisOperationFailuresTotal, 'add');
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.task.count.mockResolvedValue(0);
+      cache.set.mockRejectedValue(new Error('Redis unavailable'));
+
+      await service.findAll({});
+
+      expect(addSpy).toHaveBeenCalledWith(1, {
+        client: 'cache',
+        operation: 'set',
       });
     });
   });

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ObservabilityModule } from '../observability/observability.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { validate } from './env.validation';
 import { WeeklyRoutineCleanupService } from './weekly-routine-cleanup.service';
@@ -14,6 +15,7 @@ import { WeeklyRoutineCleanupService } from './weekly-routine-cleanup.service';
       validate,
     }),
     PrismaModule,
+    ObservabilityModule,
   ],
   providers: [WeeklyRoutineCleanupService],
 })

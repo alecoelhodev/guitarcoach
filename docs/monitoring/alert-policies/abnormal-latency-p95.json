@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - abnormal request latency",
+  "documentation": {
+    "content": "p95 HTTP request duration over 2 seconds for 5 minutes. Backed by the http_request_duration_ms OTel histogram (src/observability/http-observability.interceptor.ts). Starting threshold, not a tuned production value — no baseline exists yet. VERIFY the metric.type filter below in Metrics Explorer before applying (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "p95 latency > 2000ms over 5 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/http_request_duration_ms/histogram\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 2000,
+        "duration": "300s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

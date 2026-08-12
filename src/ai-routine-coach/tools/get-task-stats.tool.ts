@@ -9,6 +9,7 @@ import {
   MIN_LOOKBACK_DAYS,
 } from './tool-constants';
 import { requireUserId } from './require-user-id';
+import { withToolDuration } from './tool-observability';
 
 const logger = new Logger('get_task_stats');
 
@@ -35,11 +36,13 @@ export async function getTaskStats(
   userId: string,
   args: GetTaskStatsArgs,
 ) {
-  logger.debug('get_task_stats invoked');
-  return deps.practiceSessionsService.getTaskStats(
-    userId,
-    args.days ?? DEFAULT_LOOKBACK_DAYS,
-  );
+  return withToolDuration('get_task_stats', async () => {
+    logger.debug('get_task_stats invoked');
+    return deps.practiceSessionsService.getTaskStats(
+      userId,
+      args.days ?? DEFAULT_LOOKBACK_DAYS,
+    );
+  });
 }
 
 export function buildGetTaskStatsTool(deps: {

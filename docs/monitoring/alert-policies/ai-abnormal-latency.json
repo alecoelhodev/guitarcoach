@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - abnormal AI latency",
+  "documentation": {
+    "content": "p95 AI provider/agent request duration over 15 seconds for 15 minutes. Backed by ai_request_duration_ms (src/ai-practice-planner/openai/openai-responses.service.ts, src/ai-routine-coach/agent/agent-runner.ts). Starting threshold, not tuned — no production baseline exists yet, and LLM latency is inherently more variable than typical API latency. VERIFY the metric.type filter below in Metrics Explorer before applying (see docs/monitoring/README.md).",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "p95 AI latency > 15000ms over 15 min",
+      "conditionThreshold": {
+        "filter": "metric.type=\"prometheus.googleapis.com/ai_request_duration_ms/histogram\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 15000,
+        "duration": "900s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "900s",
+            "perSeriesAligner": "ALIGN_PERCENTILE_95",
+            "crossSeriesReducer": "REDUCE_MAX"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

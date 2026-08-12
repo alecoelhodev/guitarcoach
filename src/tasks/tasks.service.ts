@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Cache } from 'cache-manager';
 import { Prisma, Task } from '../generated/prisma/client';
+import { meters } from '../observability/metrics/meters';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { FindTasksQueryDto } from './dto/find-tasks-query.dto';
@@ -191,6 +192,10 @@ export class TasksService {
     try {
       return await this.cache.get<T>(key);
     } catch (error) {
+      meters.redisOperationFailuresTotal.add(1, {
+        client: 'cache',
+        operation: 'get',
+      });
       this.logger.warn(`Cache get failed for key "${key}"`, error);
       return undefined;
     }
@@ -208,6 +213,10 @@ export class TasksService {
         await this.cache.set(key, value, ttl);
       }
     } catch (error) {
+      meters.redisOperationFailuresTotal.add(1, {
+        client: 'cache',
+        operation: 'set',
+      });
       this.logger.warn(`Cache set failed for key "${key}"`, error);
     }
   }
@@ -216,6 +225,10 @@ export class TasksService {
     try {
       await this.cache.del(key);
     } catch (error) {
+      meters.redisOperationFailuresTotal.add(1, {
+        client: 'cache',
+        operation: 'del',
+      });
       this.logger.warn(`Cache del failed for key "${key}"`, error);
     }
   }

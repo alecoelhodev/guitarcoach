@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { RoutineStatus } from '../generated/prisma/enums';
+import { meters } from '../observability/metrics/meters';
 import { PrismaService } from '../prisma/prisma.service';
 import { WeeklyRoutineCleanupService } from './weekly-routine-cleanup.service';
 
@@ -79,5 +80,44 @@ describe('WeeklyRoutineCleanupService', () => {
     prisma.routine.updateMany.mockRejectedValue(new Error('connection lost'));
 
     await expect(service.run()).rejects.toThrow('connection lost');
+  });
+
+  describe('job metrics', () => {
+    let jobRunsAddSpy: jest.SpyInstance;
+    let jobDurationRecordSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      jobRunsAddSpy = jest.spyOn(meters.jobRunsTotal, 'add');
+      jobDurationRecordSpy = jest.spyOn(meters.jobDurationMs, 'record');
+    });
+
+    afterEach(() => {
+      jobRunsAddSpy.mockRestore();
+      jobDurationRecordSpy.mockRestore();
+    });
+
+    it('records a success outcome and the run duration', async () => {
+      const result = await service.run();
+
+      expect(jobRunsAddSpy).toHaveBeenCalledWith(1, {
+        job: 'weekly-routine-cleanup',
+        outcome: 'success',
+      });
+      expect(jobDurationRecordSpy).toHaveBeenCalledWith(result.durationMs, {
+        job: 'weekly-routine-cleanup',
+      });
+    });
+
+    it('records a failure outcome without recording a duration', async () => {
+      prisma.routine.updateMany.mockRejectedValue(new Error('connection lost'));
+
+      await expect(service.run()).rejects.toThrow('connection lost');
+
+      expect(jobRunsAddSpy).toHaveBeenCalledWith(1, {
+        job: 'weekly-routine-cleanup',
+        outcome: 'failure',
+      });
+      expect(jobDurationRecordSpy).not.toHaveBeenCalled();
+    });
   });
 });

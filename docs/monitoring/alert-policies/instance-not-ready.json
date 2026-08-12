@@ -1,0 +1,27 @@
+{
+  "displayName": "Guitar Coach API - instance not ready",
+  "documentation": {
+    "content": "The /health/ready uptime check has failed. Check Cloud Run logs for the failing dependency (memory/disk/database/redis/rabbitmq) — HealthController's readiness checks log full detail server-side (see src/health/indicators/). Requires an Uptime Check resource named guitar-coach-api-ready to already exist (see docs/monitoring/README.md). NOTE: the uptime-check alerting condition JSON shape below is unverified against a live policy — if `gcloud alpha monitoring policies create` rejects it, recreate this specific alert via the Cloud Console's Uptime Check UI instead (it offers a one-click 'Create Alerting Policy' action scoped correctly to the check) and skip applying this file.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Uptime check failing",
+      "conditionThreshold": {
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.\"check_id\"=\"guitar-coach-api-ready\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "120s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_NEXT_OLDER",
+            "crossSeriesReducer": "REDUCE_COUNT_FALSE"
+          }
+        ]
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": []
+}

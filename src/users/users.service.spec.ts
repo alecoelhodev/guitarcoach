@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma, User } from '../generated/prisma/client';
+import { SecurityEventLogger } from '../observability/security-event.logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from './users.service';
 
@@ -37,9 +38,12 @@ type MockPrismaService = {
   };
 };
 
+type MockSecurityEventLogger = { log: jest.Mock };
+
 describe('UsersService', () => {
   let service: UsersService;
   let prisma: MockPrismaService;
+  let securityEventLogger: MockSecurityEventLogger;
 
   beforeEach(async () => {
     prisma = {
@@ -50,9 +54,17 @@ describe('UsersService', () => {
         delete: jest.fn(),
       },
     };
+    securityEventLogger = { log: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UsersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: SecurityEventLogger,
+          useValue: securityEventLogger,
+        },
+      ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
@@ -121,18 +133,43 @@ describe('UsersService', () => {
     it('deletes an existing user', async () => {
       prisma.user.delete.mockResolvedValue(buildUser());
 
-      await expect(service.remove('some-id')).resolves.toBeUndefined();
+      await expect(
+        service.remove('admin-id', 'some-id'),
+      ).resolves.toBeUndefined();
       expect(prisma.user.delete).toHaveBeenCalledWith({
         where: { id: 'some-id' },
+      });
+    });
+
+    it('logs a user.deleted audit event with the actor and target on success', async () => {
+      prisma.user.delete.mockResolvedValue(buildUser());
+
+      await service.remove('admin-id', 'some-id');
+
+      expect(securityEventLogger.log).toHaveBeenCalledWith({
+        eventType: 'user.deleted',
+        outcome: 'success',
+        actorId: 'admin-id',
+        targetType: 'user',
+        targetId: 'some-id',
       });
     });
 
     it('throws NotFoundException for an unknown id', async () => {
       prisma.user.delete.mockRejectedValue(prismaError('P2025'));
 
-      await expect(service.remove('unknown-id')).rejects.toThrow(
+      await expect(service.remove('admin-id', 'unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('does not log an audit event when the delete fails', async () => {
+      prisma.user.delete.mockRejectedValue(prismaError('P2025'));
+
+      await expect(service.remove('admin-id', 'unknown-id')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(securityEventLogger.log).not.toHaveBeenCalled();
     });
   });
 });
