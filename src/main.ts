@@ -8,6 +8,18 @@ import { correlationIdMiddleware } from './observability/correlation-id.middlewa
 import { StructuredLoggerService } from './observability/structured-logger.service';
 import { routineEventsRmqOptions } from './routines/events/rabbitmq.constants';
 
+// @openai/agents-core's TraceProvider installs its own process-wide
+// 'unhandledRejection' listener (dist/tracing/provider.js) that calls
+// process.exit(1) whenever it's the only listener for the event — so any
+// stray unhandled rejection anywhere in the app, unrelated to AI features,
+// would otherwise force-exit the whole process, and process.exit() truncates
+// whatever we were about to log about the real error before it flushes.
+// Registering a listener here defuses that exit branch (Node calls every
+// registered listener) and guarantees the actual rejection reason is logged.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
+
 async function bootstrap(): Promise<void> {
   // bufferLogs holds every log emitted during module initialization until
   // useLogger() below is called, so even early bootstrap/DI logs go through
