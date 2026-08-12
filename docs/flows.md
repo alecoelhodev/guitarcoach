@@ -134,12 +134,12 @@ sequenceDiagram
     Note over Main: must happen before app.listen()
     Main->>HTTP: app.listen(port)
 
-    Producer--)RabbitMQ: emit("routine.created", event) [queue: routine_events]
+    Producer--)RabbitMQ: emit("routine.created", event) [queue: routine_events_v2]
     RabbitMQ--)Consumer: deliver to durable queue
     Consumer->>Consumer: @EventPattern handler logs the event
 ```
 
-**Queue name and routing pattern are deliberately two different strings.** `ROUTINE_EVENTS_QUEUE = 'routine_events'` is the actual AMQP queue; `ROUTINE_CREATED_PATTERN = 'routine.created'` (`routine-created.event.ts:3`) is the routing key/event-pattern used by both `client.emit(...)` and `@EventPattern(...)`. Both producer and consumer import the same `ROUTINE_EVENTS_QUEUE_OPTIONS` constant (`src/routines/events/rabbitmq.constants.ts:11-14`) rather than each declaring their own literal — the comment there explains why: RabbitMQ rejects a queue redeclare whose options don't match the first declaration, so the two sides drifting apart would break at runtime, not at compile time.
+**Queue name and routing pattern are deliberately two different strings.** `ROUTINE_EVENTS_QUEUE = 'routine_events_v2'` is the actual AMQP queue (renamed from `routine_events` — see the comment above the constant for why: RabbitMQ rejects redeclaring a durable queue whose arguments changed, and a still-live previous revision recreating the old queue on every autoscaled instance makes deleting it by hand a losing race); `ROUTINE_CREATED_PATTERN = 'routine.created'` (`routine-created.event.ts:3`) is the routing key/event-pattern used by both `client.emit(...)` and `@EventPattern(...)`. Both producer and consumer import the same `ROUTINE_EVENTS_QUEUE_OPTIONS` constant (`src/routines/events/rabbitmq.constants.ts:11-14`) rather than each declaring their own literal — the comment there explains why: RabbitMQ rejects a queue redeclare whose options don't match the first declaration, so the two sides drifting apart would break at runtime, not at compile time.
 
 **The message envelope is versioned.** `RoutineCreatedEvent` (`routine-created.event.ts:5-16`) carries `eventId` (a fresh `randomUUID()` per publish), `eventType`, `eventVersion: 1`, `occurredAt`, and a `data` payload trimmed to just `{ routineId, userId, title, status }` — not the full `Routine` row.
 
