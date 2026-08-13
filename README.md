@@ -39,6 +39,7 @@ This file covers architecture, data model, and local setup. Full endpoint walkth
 - [AI Routine Coach](docs/ai-routine-coach.md) — no-confirmation AI routine agent and its tools/guardrail
 - [Weekly routine cleanup job](docs/weekly-routine-cleanup.md) — standalone Cloud Run Job setup and selection rules
 - [Continuous deployment](docs/deployment.md) — CI/CD pipeline, one-time GCP setup, rollback
+- [Performance testing](docs/performance-testing.md) — k6 smoke/load tests for the practice-sessions create/list/get workflows
 - [Architecture decisions](docs/architecture-decisions.md) — rationale behind non-obvious design choices
 - [Monitoring & alerting](docs/monitoring/README.md) — OTel metrics, alert policies, log-based metrics
 
@@ -349,9 +350,15 @@ Selection/week-boundary rules and the full one-time GCP setup script: [`docs/wee
 
 ## Continuous deployment
 
-`.github/workflows/google-cloudrun-docker.yml` builds the API image, pushes it to Artifact Registry, and deploys it to Cloud Run on every push to `main`. `.github/workflows/ci.yml` runs format/lint/test/build on every PR. Both authenticate to Google Cloud via **Direct Workload Identity Federation** — no service account key ever exists as a GitHub secret; a GitHub Actions OIDC token is exchanged directly for short-lived GCP credentials, scoped to a specific repo.
+`.github/workflows/google-cloudrun-docker.yml` builds the API image, pushes it to Artifact Registry, and deploys it to Cloud Run on every push to `main`. `.github/workflows/ci.yml` runs format/lint/test/build on every PR. Both authenticate to Google Cloud via **Direct Workload Identity Federation** — no service account key ever exists as a GitHub secret; a GitHub Actions OIDC token is exchanged directly for short-lived GCP credentials, scoped to a specific repo. A third, independent workflow (`.github/workflows/k6-performance.yml`) runs in parallel with these on every PR/merge — see [Performance testing](#performance-testing) below.
 
 Full one-time GCP project setup script, gotchas hit getting it working, and how to roll back a bad deploy: [`docs/deployment.md`](docs/deployment.md).
+
+## Performance testing
+
+A k6-based smoke test and a small, env-var-configurable load test cover the `practice-sessions` module's create/list/get endpoints — the first performance-testing coverage in the repo, meant as a pattern to copy for other modules. Both scripts self-provision a dedicated test user in `setup()` (sign-in, falling back to sign-up) rather than depending on seeded dev data, tag requests per-workflow for separate latency/error-rate breakdown, and default to `localhost` only, requiring an explicit opt-in to target anything else. A lightweight version also runs in CI on every PR and merge to `main`, against the app's existing deployed (pre-production) Cloud Run environment.
+
+Full setup, env vars, thresholds, and how to read the output: [`docs/performance-testing.md`](docs/performance-testing.md).
 
 ## Architecture decisions
 

@@ -27,6 +27,8 @@
     "prepare": "husky || true",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset",
+    "perf:smoke": "k6 run k6/practice-sessions-smoke.js",
+    "perf:load": "k6 run k6/practice-sessions-load.js",
     "weekly-routine-cleanup": "tsx src/weekly-routine-cleanup/main.ts",
     "start:weekly-routine-cleanup": "node dist/src/weekly-routine-cleanup/main"
   },

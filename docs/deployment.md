@@ -103,6 +103,39 @@ gcloud run services add-iam-policy-binding SERVICE_NAME \
   --member="$WIF_MEMBER" --role="roles/run.admin"
 ```
 
+**k6 performance-test CI job (staging) — one-time setup:**
+
+`.github/workflows/k6-performance.yml` (see [Performance testing](performance-testing.md)) reuses the exact WIF principal above, plus three additions of its own — a dedicated CI-only test-user identity (never a developer's personal account), least-privilege access to just that identity's two secrets, and a place to put the staging URL outside the workflow file:
+
+```bash
+# Dedicated CI-only test user credentials, alongside the app secrets above.
+# The email/password here just need to be picked once — the k6 scripts
+# themselves handle creating this user on their first run (sign-in-or-sign-up
+# fallback in setup()), so no manual sign-up call or DB insert is needed.
+printf '%s' "k6-perf-test@example.com" | \
+  gcloud secrets create guitarcoach-k6-perf-test-email --project=PROJECT_ID --data-file=-
+printf '%s' "YOUR_CHOSEN_PASSWORD" | \
+  gcloud secrets create guitarcoach-k6-perf-test-password --project=PROJECT_ID --data-file=-
+
+# Scoped to just these two secrets — the CI WIF principal gets no broader
+# Secret Manager access than this.
+for SECRET in guitarcoach-k6-perf-test-email guitarcoach-k6-perf-test-password; do
+  gcloud secrets add-iam-policy-binding "$SECRET" --project=PROJECT_ID \
+    --member="$WIF_MEMBER" --role="roles/secretmanager.secretAccessor"
+done
+```
+
+```bash
+# One-time, via the GitHub UI or `gh`: a `staging` Environment holding the
+# non-secret STAGING_BASE_URL variable (a URL isn't a credential, but keeping
+# it out of the workflow file still makes it changeable without a code edit).
+gh api repos/YOUR_GITHUB_ORG/REPO_NAME/environments/staging -X PUT
+gh api repos/YOUR_GITHUB_ORG/REPO_NAME/environments/staging/variables \
+  -X POST -f name=STAGING_BASE_URL -f value=https://guitarcoach-685026468764.us-east1.run.app
+```
+
+There is no separate staging project/service in this repo today — the value above is the same Cloud Run URL the deploy workflow already targets, used in its pre-production role since this application isn't serving real production traffic yet (see `performance-testing.md`'s "Continuous integration" section for why).
+
 **Gotchas hit getting this working, in case they recur:**
 
 - **Artifact Registry image paths need four segments**, `HOST/PROJECT/REPOSITORY/IMAGE` — a workflow that only sets `PROJECT/SERVICE` (three segments) fails at push time with `invalid tag ...: Missing image name`, not at deploy time, so it's easy to mistake for an IAM problem.
