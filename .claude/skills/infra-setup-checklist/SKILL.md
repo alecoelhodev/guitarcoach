@@ -12,9 +12,9 @@ Do **not** trigger for things that stay entirely inside the app: a new DB table/
 
 1. **Stop before writing implementation code.** First produce a concise, step-by-step checklist, clearly separated into these four sections:
    1. **Manual steps** — what the user must complete themselves in the provider console (e.g. GCP Console): creating/selecting a project, enabling APIs, creating resources that need console-only confirmation, etc.
-   2. **CLI commands** — the equivalent steps runnable via CLI (e.g. `gcloud`), for anything scriptable. Use placeholders (`PROJECT_ID`, `REGION`, etc.) the same way `README.md`'s existing "One-time GCP project setup" section does.
+   2. **CLI commands** — the equivalent steps runnable via CLI (e.g. `gcloud`), for anything scriptable. Use placeholders (`PROJECT_ID`, `REGION`, etc.) the same way `docs/deployment.md`'s existing "One-time GCP project setup" section does.
    3. **Environment variables** — the exact env vars the NestJS app requires for this feature. Cross-reference `src/config/env.validation.ts` (the single source of truth for env vars per `CLAUDE.md`) and `.env.example` so names match what the app actually reads — never invent a var name without checking these files first.
-   4. **Production recommendations** — how auth/credentials should work in production, not local dev. This repo deploys to Cloud Run, so prefer Workload Identity / attached service accounts over downloaded JSON keys in production, mirroring the existing `weekly-routine-cleanup` Cloud Run Job setup in `README.md`.
+   4. **Production recommendations** — how auth/credentials should work in production, not local dev. This repo deploys to Cloud Run, so prefer Workload Identity / attached service accounts over downloaded JSON keys in production, mirroring the existing `weekly-routine-cleanup` Cloud Run Job setup in `docs/weekly-routine-cleanup.md`.
 
 2. **Always apply these constraints** to every checklist:
    - Principle of least privilege — grant only the specific permissions the feature needs.

@@ -30,7 +30,7 @@ const AUTH_SCOPES = 'https://www.googleapis.com/auth/cloud-platform';
  * Requires the runtime's service account to have `roles/monitoring.metricWriter`
  * and the `monitoring.googleapis.com` API enabled on the GCP project — both
  * one-off `gcloud` grants, provisioned the same way every other piece of GCP
- * infra in this repo is (see README's Continuous deployment section) rather
+ * infra in this repo is (see docs/deployment.md) rather
  * than via Terraform/IaC, which doesn't exist yet for this project.
  */
 @Module({})

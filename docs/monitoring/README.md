@@ -2,7 +2,7 @@
 
 This is a manual/`gcloud`-driven runbook, matching how every other piece of GCP
 infra in this repo is provisioned (Secret Manager, IAM, the runtime service
-account — see `README.md`'s "Continuous deployment" section). There is no
+account — see `docs/deployment.md`). There is no
 Terraform/IaC for this project yet (see `CLAUDE.md`'s roadmap notes), so
 nothing here is applied automatically — it's a set of `gcloud` commands and
 policy definitions to run by hand, the same way Secret Manager secrets are
@@ -34,7 +34,7 @@ gcloud services enable monitoring.googleapis.com --project=YOUR_PROJECT_ID
 
 # Grant the existing Cloud Run runtime service account permission to write
 # metrics. This is the same service account already used for Cloud SQL/GCS/
-# Secret Manager access — see README's Continuous deployment section.
+# Secret Manager access — see docs/deployment.md.
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:guitarcoach-api-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/monitoring.metricWriter"

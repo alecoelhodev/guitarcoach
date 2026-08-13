@@ -33,7 +33,7 @@ sequenceDiagram
     Controller-->>Client: 200 (or 401/403 from the guard)
 ```
 
-**Sign-in issues the cookie.** `POST /auth/sign-in/email` and `/auth/sign-up/email` are handled entirely by Better Auth's own middleware — there's no Nest controller in the path, which is also why these routes don't appear in the Swagger UI at `/docs` (see [Architecture decisions](../README.md#architecture-decisions) in the README).
+**Sign-in issues the cookie.** `POST /auth/sign-in/email` and `/auth/sign-up/email` are handled entirely by Better Auth's own middleware — there's no Nest controller in the path, which is also why these routes don't appear in the Swagger UI at `/docs` (see [Architecture decisions](architecture-decisions.md)).
 
 **Every other request goes through `AuthGuard`.** `AuthGuard.canActivate` calls `auth.api.getSession({ headers })`, attaches the result to `request.session`/`request.user`, then applies decorator metadata in order: `@Public()`/`@AllowAnonymous()` skips the session check entirely (e.g. `src/health/health.controller.ts:27,34`, since liveness/readiness probes can't authenticate); `@OptionalAuth()` allows an anonymous request through but still populates the session if one exists; otherwise a missing session throws `401`; `@Roles([...])` then checks the authenticated user's role and throws `403` if it doesn't match (e.g. `@Roles(['admin'])` on `TasksController`'s mutating routes, `src/tasks/tasks.controller.ts:25,41,50`). Controllers that need the authenticated user inject it with `@Session() session: UserSession` (`src/routines/routines.controller.ts:34` — `session.user.id` is what scopes every routines query to its owner; see [Core write](#core-write)).
 
