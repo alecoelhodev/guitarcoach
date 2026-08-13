@@ -38,10 +38,16 @@ type MockPrismaService = {
     create: jest.Mock;
     findMany: jest.Mock;
     findFirst: jest.Mock;
+    deleteMany: jest.Mock;
   };
   practiceSessionTask: {
     findMany: jest.Mock;
+    deleteMany: jest.Mock;
   };
+  recording: {
+    deleteMany: jest.Mock;
+  };
+  $transaction: jest.Mock;
 };
 
 type MockRoutinesService = {
@@ -59,10 +65,18 @@ describe('PracticeSessionsService', () => {
         create: jest.fn(),
         findMany: jest.fn(),
         findFirst: jest.fn(),
+        deleteMany: jest.fn(),
       },
       practiceSessionTask: {
         findMany: jest.fn(),
+        deleteMany: jest.fn(),
       },
+      recording: {
+        deleteMany: jest.fn(),
+      },
+      $transaction: jest.fn((operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
     };
     routinesService = {
       findById: jest.fn(),
@@ -202,6 +216,58 @@ describe('PracticeSessionsService', () => {
       await expect(service.findById(USER_ID, 'unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('deleteByTitle', () => {
+    it('deletes dependent recordings and tasks before the owning sessions', async () => {
+      prisma.recording.deleteMany.mockResolvedValue({ count: 2 });
+      prisma.practiceSessionTask.deleteMany.mockResolvedValue({ count: 3 });
+      prisma.practiceSession.deleteMany.mockResolvedValue({ count: 1 });
+
+      const deletedCount = await service.deleteByTitle(
+        USER_ID,
+        'k6 practice session',
+      );
+
+      expect(prisma.recording.deleteMany).toHaveBeenCalledWith({
+        where: {
+          practiceSession: { userId: USER_ID, title: 'k6 practice session' },
+        },
+      });
+      expect(prisma.practiceSessionTask.deleteMany).toHaveBeenCalledWith({
+        where: {
+          practiceSession: { userId: USER_ID, title: 'k6 practice session' },
+        },
+      });
+      expect(prisma.practiceSession.deleteMany).toHaveBeenCalledWith({
+        where: { userId: USER_ID, title: 'k6 practice session' },
+      });
+      expect(deletedCount).toBe(1);
+    });
+
+    it('returns zero, not a NotFoundException, when nothing matches', async () => {
+      prisma.recording.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.practiceSessionTask.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.practiceSession.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.deleteByTitle(USER_ID, 'no such title'),
+      ).resolves.toBe(0);
+    });
+
+    it('scopes the delete to the calling user only', async () => {
+      prisma.recording.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.practiceSessionTask.deleteMany.mockResolvedValue({ count: 0 });
+      prisma.practiceSession.deleteMany.mockResolvedValue({ count: 0 });
+
+      await service.deleteByTitle(USER_ID, 'Morning warm-up');
+
+      const call = prisma.practiceSession.deleteMany.mock.calls[0] as [
+        { where: { userId: string } },
+      ];
+      expect(call[0].where.userId).toBe(USER_ID);
+      expect(call[0].where.userId).not.toBe('some-other-user-id');
     });
   });
 

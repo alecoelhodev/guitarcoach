@@ -7,7 +7,7 @@
 // for a first, small load test; not a stress/spike/soak test.
 import { VUS, DURATION, buildThresholds, SUMMARY_TREND_STATS } from './lib/config.js';
 import { provisionSession } from './lib/auth.js';
-import { runPracticeSessionWorkflow } from './lib/workflows.js';
+import { runPracticeSessionWorkflow, cleanupPracticeSessions } from './lib/workflows.js';
 
 export const options = {
   scenarios: {
@@ -27,4 +27,8 @@ export function setup() {
 
 export default function (data) {
   runPracticeSessionWorkflow(data.cookieHeader);
+}
+
+export function teardown(data) {
+  cleanupPracticeSessions(data.cookieHeader);
 }

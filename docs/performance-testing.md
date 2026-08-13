@@ -32,9 +32,11 @@ K6_LOAD_VUS=10 K6_LOAD_DURATION=60s npm run perf:load
 
 Both scripts (`k6/practice-sessions-smoke.js`, `k6/practice-sessions-load.js`) run the same three tagged requests per iteration, shared from `k6/lib/workflows.js`:
 
-- `create` — `POST /api/v1/practice-sessions` with a minimal `{ title }` body (no `routineId`/`tasks`, to keep this test self-contained and independent of the Routines/Tasks modules).
+- `create` — `POST /api/v1/practice-sessions` with a minimal `{ title }` body (no `routineId`/`tasks`, to keep this test self-contained and independent of the Routines/Tasks modules). `title` is always the same fixed literal (`k6 practice session`) so cleanup (below) can find everything a run created.
 - `get` — `GET /api/v1/practice-sessions/:id` for the session just created.
 - `list` — `GET /api/v1/practice-sessions`.
+
+Once, at the very end of a run — not per-iteration — `teardown()` calls `DELETE /api/v1/practice-sessions?title=k6%20practice%20session` to remove everything that run created (see "Test data / cleanup" below). This runs once regardless of VU count and even if thresholds failed, so a run never leaves residue behind, while the `list` workload above still gets to exercise a genuinely growing history *during* the run — cleanup only happens after.
 
 Each request is tagged (`{ name: 'create' | 'list' | 'get' }`) so their latency/error metrics are reported separately, not blended into one overall number. Each also has a `check()` asserting both the HTTP status *and* a minimally-shaped response body (e.g. `create` checks for a string `id`, `get` checks the returned `id` matches) — a `200`/`201` with a malformed or empty body fails the run, not just a non-2xx status.
 
@@ -64,9 +66,13 @@ Each threshold line in the summary shows `✓`/`✗`. k6 exits non-zero if any t
 
 `BASE_URL` defaults to `http://localhost:3000`. Any other host is refused with an explicit error unless `K6_ALLOW_NON_LOCAL=true` is also set — this is enforced in `k6/lib/config.js` before any request is sent. Recognized "local" hosts: `localhost`, `127.0.0.1`, `[::1]` (with or without a port). A custom `/etc/hosts` alias or something like `host.docker.internal` also requires the explicit opt-in — deliberately simple rather than clever.
 
-## Test data / no cleanup
+## Test data / cleanup
 
-There is no delete endpoint for practice sessions, so every run leaves the rows it created behind in whatever database `BASE_URL` points at. Only run these against a disposable database you're fine resetting (the local Docker Compose Postgres via `npm run db:reset`, or a pre-production staging environment — see below) — never a real production database. No cleanup automation is included here; that's a deliberate scope boundary, not an oversight.
+Each run's `teardown()` automatically deletes every session it created, via `DELETE /api/v1/practice-sessions?title=k6%20practice%20session` (see [Practice recordings](practice-recordings.md) for the full endpoint description) — a bulk, exact-title-match delete scoped to the caller's own account, the one bulk/filtered delete in this API (every other delete is single-resource-by-id). Cleanup is best-effort: a failure there only logs a warning, it never flips an otherwise-successful smoke/load run to failed, since cleanup isn't part of what's being measured.
+
+This is still not a substitute for running against a database you're comfortable with — only ever point `BASE_URL` at a disposable environment (the local Docker Compose Postgres, or a pre-production staging environment — see below), never a real production database, in case a run is interrupted before its `teardown()` fires (e.g. a killed process).
+
+**Cleaning up data created before this endpoint existed**: the same endpoint works from a plain `curl` too — sign in as whichever test account accumulated rows (locally, or the CI test user against staging) and run the same `DELETE` call manually once. No separate script is needed.
 
 ## Continuous integration
 
