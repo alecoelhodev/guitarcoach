@@ -53,8 +53,8 @@ jobs:
         uses: google-github-actions/get-secretmanager-secrets@v3
         with:
           secrets: |-
-            K6_TEST_USER_EMAIL:guitarcoach-k6-perf-test-email
-            K6_TEST_USER_PASSWORD:guitarcoach-k6-perf-test-password
+            K6_TEST_USER_EMAIL:${{ env.PROJECT_ID }}/guitarcoach-k6-perf-test-email
+            K6_TEST_USER_PASSWORD:${{ env.PROJECT_ID }}/guitarcoach-k6-perf-test-password
 
       - name: Install k6
         uses: grafana/setup-k6-action@v1
