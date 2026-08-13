@@ -1,0 +1,85 @@
+# Lightweight k6 smoke + short load test for the practice-sessions module,
+# run against the app's existing deployed Cloud Run environment (used here in
+# its pre-production/"staging" role — see docs/performance-testing.md).
+#
+# Deliberately a separate, independent workflow (no `needs:` on ci.yml's
+# build-and-test job) so it runs in parallel with the existing PR checks
+# instead of lengthening that pipeline. It also needs no Node/npm toolchain
+# step at all: the k6 scripts are plain .js run directly by the k6 binary.
+#
+# One-time setup this depends on (not automated — see docs/deployment.md's
+# "k6 performance-test CI job" subsection for the exact commands):
+#   - Secret Manager secrets `guitarcoach-k6-perf-test-email` /
+#     `guitarcoach-k6-perf-test-password` for a dedicated CI-only test user.
+#   - `roles/secretmanager.secretAccessor` on those two secrets, granted to
+#     the existing GitHub Workload Identity Federation principal below.
+#   - A `staging` GitHub Environment with a `STAGING_BASE_URL` variable set
+#     to the existing deployed Cloud Run URL.
+name: k6 Performance Tests (staging)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: 'guitar-coach-504400'
+  WORKLOAD_IDENTITY_PROVIDER: 'projects/685026468764/locations/global/workloadIdentityPools/github/providers/guitarcoach'
+
+jobs:
+  k6-smoke-and-load:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+
+      - id: auth
+        name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
+          project_id: '${{ env.PROJECT_ID }}'
+
+      - id: secrets
+        name: Fetch k6 test-user credentials
+        uses: google-github-actions/get-secretmanager-secrets@v3
+        with:
+          secrets: |-
+            K6_TEST_USER_EMAIL:${{ env.PROJECT_ID }}/guitarcoach-k6-perf-test-email
+            K6_TEST_USER_PASSWORD:${{ env.PROJECT_ID }}/guitarcoach-k6-perf-test-password
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 smoke test (staging)
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          K6_ALLOW_NON_LOCAL: 'true'
+          K6_TEST_USER_EMAIL: ${{ steps.secrets.outputs.K6_TEST_USER_EMAIL }}
+          K6_TEST_USER_PASSWORD: ${{ steps.secrets.outputs.K6_TEST_USER_PASSWORD }}
+        run: npm run perf:smoke
+
+      - name: Run k6 short load test (staging, low concurrency)
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+          K6_ALLOW_NON_LOCAL: 'true'
+          K6_TEST_USER_EMAIL: ${{ steps.secrets.outputs.K6_TEST_USER_EMAIL }}
+          K6_TEST_USER_PASSWORD: ${{ steps.secrets.outputs.K6_TEST_USER_PASSWORD }}
+          # Deliberately small — this is a PR/merge gate, not a load test.
+          # Hard thresholds below fail the pipeline on a real regression;
+          # see docs/performance-testing.md for why these differ from the
+          # local-default thresholds.
+          K6_LOAD_VUS: '3'
+          K6_LOAD_DURATION: '90s'
+          K6_THRESHOLD_P95_MS: '800'
+          K6_THRESHOLD_P99_MS: '1500'
+          K6_THRESHOLD_ERROR_RATE: '0.01'
+        run: npm run perf:load

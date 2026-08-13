@@ -58,6 +58,7 @@ describe('PracticeSessionsController', () => {
     create: jest.Mock;
     findAll: jest.Mock;
     findById: jest.Mock;
+    deleteByTitle: jest.Mock;
   };
   let recordingsService: {
     upload: jest.Mock;
@@ -69,6 +70,7 @@ describe('PracticeSessionsController', () => {
       create: jest.fn(),
       findAll: jest.fn(),
       findById: jest.fn(),
+      deleteByTitle: jest.fn(),
     };
     recordingsService = {
       upload: jest.fn(),
@@ -129,6 +131,20 @@ describe('PracticeSessionsController', () => {
       SESSION_ID,
     );
     expect(result).toEqual(session);
+  });
+
+  it('scopes deleteByTitle() to the session user', async () => {
+    practiceSessionsService.deleteByTitle.mockResolvedValue(3);
+
+    const result = await controller.deleteByTitle(buildSession(), {
+      title: 'k6 practice session',
+    });
+
+    expect(practiceSessionsService.deleteByTitle).toHaveBeenCalledWith(
+      USER_ID,
+      'k6 practice session',
+    );
+    expect(result).toEqual({ deletedCount: 3 });
   });
 
   it('delegates uploadRecording() to RecordingsService with the session user', async () => {

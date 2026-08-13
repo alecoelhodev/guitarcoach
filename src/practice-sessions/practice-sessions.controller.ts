@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -13,6 +15,7 @@ import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { PracticeSession, Recording } from '../generated/prisma/client';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
+import { DeletePracticeSessionsQueryDto } from './dto/delete-practice-sessions-query.dto';
 import { RecordingsService } from './recordings/recordings.service';
 import { PracticeSessionsService } from './practice-sessions.service';
 
@@ -37,6 +40,21 @@ export class PracticeSessionsController {
   @Get()
   findAll(@Session() session: UserSession): Promise<PracticeSession[]> {
     return this.practiceSessionsService.findAll(session.user.id);
+  }
+
+  // Bulk delete by exact title match, scoped to the caller's own sessions --
+  // see the comment on PracticeSessionsService.deleteByTitle for why this is
+  // safe despite having no other bulk/filtered delete precedent in the app.
+  @Delete()
+  async deleteByTitle(
+    @Session() session: UserSession,
+    @Query() query: DeletePracticeSessionsQueryDto,
+  ): Promise<{ deletedCount: number }> {
+    const deletedCount = await this.practiceSessionsService.deleteByTitle(
+      session.user.id,
+      query.title,
+    );
+    return { deletedCount };
   }
 
   @Get(':sessionId')

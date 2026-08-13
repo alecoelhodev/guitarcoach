@@ -103,6 +103,27 @@ export class PracticeSessionsService {
     return session;
   }
 
+  // Bulk, filtered delete -- no precedent elsewhere in this app, where every
+  // other delete is single-resource-by-id. Kept safe by the DTO requiring a
+  // non-empty exact title match (never a wildcard/LIKE) plus the same
+  // ownership scoping as every other query here, so this can only ever
+  // delete rows the caller's own account created under that exact title.
+  // No 404 on a zero match -- a bulk filter legitimately matching nothing
+  // isn't an error, unlike the single-resource findById above.
+  async deleteByTitle(userId: string, title: string): Promise<number> {
+    const [, , { count }] = await this.prisma.$transaction([
+      this.prisma.recording.deleteMany({
+        where: { practiceSession: { userId, title } },
+      }),
+      this.prisma.practiceSessionTask.deleteMany({
+        where: { practiceSession: { userId, title } },
+      }),
+      this.prisma.practiceSession.deleteMany({ where: { userId, title } }),
+    ]);
+
+    return count;
+  }
+
   findRecent(
     userId: string,
     days: number,

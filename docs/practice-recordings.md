@@ -29,6 +29,12 @@ curl -i -b cookies.txt -X POST \
   http://localhost:3000/api/v1/practice-sessions/<session-uuid>/recordings \
   -F 'file=@practice.mp3;type=audio/mpeg'
 
+# Bulk-delete all of your own sessions with an exact matching title
+# (used by the k6 performance tests to clean up after themselves --
+# see docs/performance-testing.md -- but usable for any exact title)
+curl -i -b cookies.txt -X DELETE \
+  "http://localhost:3000/api/v1/practice-sessions?title=Evening%20practice"
+
 # List recordings for a session
 curl -i -b cookies.txt http://localhost:3000/api/v1/practice-sessions/<session-uuid>/recordings
 
@@ -42,3 +48,5 @@ curl -i -b cookies.txt -X DELETE http://localhost:3000/api/v1/recordings/<record
 The download URL returned by `/recordings/:id/download-url` expires after `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS` (default 900s / 15 minutes) — request a fresh one if it lapses.
 
 Sessions and recordings are scoped to the requesting user: acting on another user's session or recording returns `404 Not Found` (not `403`), so existence isn't leaked to non-owners. A `routineId` supplied when creating a session is checked the same way — referencing a routine you don't own also returns `404`.
+
+The bulk delete-by-title endpoint is the one exception to the "single resource, 204, by id" shape every other delete in this API follows: it's intentionally filtered and bulk, returns `{"deletedCount": <n>}` (200) instead of 204, and `title` is a **required**, exact-match-only query param — no partial/`LIKE` matching and no way to omit it, so it can never accidentally delete more than sessions with that literal title, and only ever the caller's own.
