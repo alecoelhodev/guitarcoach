@@ -23,15 +23,22 @@ export function signUp(email, password, name) {
   return { ok: res.status === 200, res };
 }
 
+// Better Auth prefixes the session cookie name with `__Secure-` when the
+// request is served over HTTPS (any deployed target) but not over plain
+// HTTP (local dev) — check both rather than assuming one.
+const SESSION_COOKIE_NAMES = ['better-auth.session_token', '__Secure-better-auth.session_token'];
+
 export function extractSessionCookie(res) {
-  const cookie = res.cookies['better-auth.session_token']?.[0]?.value;
-  if (!cookie) {
-    throw new Error(
-      `Auth response returned ${res.status} but no better-auth.session_token cookie was set ` +
-        `(body: ${res.body?.slice(0, 200)}).`,
-    );
+  for (const name of SESSION_COOKIE_NAMES) {
+    const value = res.cookies[name]?.[0]?.value;
+    if (value) {
+      return { name, value };
+    }
   }
-  return cookie;
+  throw new Error(
+    `Auth response returned ${res.status} but no session cookie (checked: ${SESSION_COOKIE_NAMES.join(', ')}) ` +
+      `was set (body: ${res.body?.slice(0, 200)}).`,
+  );
 }
 
 // Runs once in setup() — never per-VU/iteration, since /sign-in/email and
@@ -42,12 +49,14 @@ export function extractSessionCookie(res) {
 export function provisionSession() {
   const signInAttempt = signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD);
   if (signInAttempt.ok) {
-    return { cookieHeader: `better-auth.session_token=${extractSessionCookie(signInAttempt.res)}` };
+    const { name, value } = extractSessionCookie(signInAttempt.res);
+    return { cookieHeader: `${name}=${value}` };
   }
 
   const signUpAttempt = signUp(TEST_USER_EMAIL, TEST_USER_PASSWORD, TEST_USER_NAME);
   if (signUpAttempt.ok) {
-    return { cookieHeader: `better-auth.session_token=${extractSessionCookie(signUpAttempt.res)}` };
+    const { name, value } = extractSessionCookie(signUpAttempt.res);
+    return { cookieHeader: `${name}=${value}` };
   }
 
   throw new Error(
