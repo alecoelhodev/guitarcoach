@@ -2,6 +2,33 @@
 
 Backend API for Guitar Coach, built with [NestJS](https://nestjs.com/).
 
+## Contents
+
+- [Problem](#problem)
+- [Overview](#overview)
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [User flow](#user-flow)
+- [Data model](#data-model)
+- [Local setup](#local-setup)
+- [API examples](#api-examples)
+- [Authentication](#authentication)
+- [Routines](#routines)
+- [Practice recordings](#practice-recordings)
+- [AI workflow](#ai-workflow)
+- [AI Practice Planner](#ai-practice-planner)
+- [AI Routine Coach](#ai-routine-coach)
+- [Weekly routine cleanup job](#weekly-routine-cleanup-job)
+- [Continuous deployment](#continuous-deployment)
+- [Performance testing](#performance-testing)
+- [Tradeoffs](#tradeoffs)
+- [Architecture decisions](#architecture-decisions)
+- [Resources](#resources)
+
+## Problem
+
+Guitar practice is easy to do inconsistently and hard to track: without a set list of things to work on, practice time skews toward whatever's fun over what actually needs work, there's no record of what was *actually* covered versus what was only planned, and any recordings end up scattered across voice-memo apps with no link back to the session they came from. Guitar Coach gives practice a shape: a shared library of technique/theory/repertoire tasks that users assemble into their own ordered **routines**, log as **practice sessions** (recording which tasks were actually covered, not just planned), and attach audio **recordings** to for later review. On top of building a routine by hand, two different AI-assisted paths exist for the same job — see [AI workflow](#ai-workflow) — so the project also doubles as a reference implementation of two distinct LLM tool-calling integration patterns, not just a CRUD backend.
+
 ## Overview
 
 Guitar Coach is a backend API for tracking guitar practice: users build practice **routines** from a shared library of **tasks** (technique/theory/repertoire exercises), log **practice sessions**, and attach audio **recordings** of those sessions for later review.
@@ -312,6 +339,40 @@ npm run start:weekly-routine-cleanup   # run the compiled dist/ build (requires 
 
 A Husky `pre-commit` hook checks `package-lock.json` stays in sync whenever `package.json` is staged.
 
+## API examples
+
+A quick, single-journey tour of the API using a cookie jar for the session: sign up, build a routine by hand, log a session against it, then let the AI Routine Coach build a second one on its own. Assumes the app is running at `http://localhost:3000` (see [Local setup](#local-setup)). Full per-endpoint walkthroughs — recordings, reordering, roles/admin, the AI Practice Planner's confirm/decline step, and more — are indexed under [Documentation](#documentation).
+
+```bash
+# Sign up (creates the User row + a session cookie)
+curl -i -c cookies.txt -X POST http://localhost:3000/auth/sign-up/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"jordan@example.com","password":"correct-horse-battery","name":"Jordan"}'
+
+# Browse the task library
+curl -s -b cookies.txt http://localhost:3000/api/v1/tasks
+
+# Create a routine
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/routines \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Daily warm-up","notes":"15 minutes before practice"}'
+
+# Attach a task to it (using a taskId from the "Browse the task library" response above)
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/routines/<routine-uuid>/tasks \
+  -H 'Content-Type: application/json' \
+  -d '{"taskId":"<task-uuid>","targetDurationMinutes":10}'
+
+# Log a practice session against that routine
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/practice-sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Morning session","routineId":"<routine-uuid>"}'
+
+# Or skip the manual steps above entirely and let the AI Routine Coach build + persist a routine for you
+curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/ai/routine-coach \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"Create a 30-minute warm-up routine for today."}'
+```
+
 ## Authentication
 
 Auth is handled by [Better Auth](https://www.better-auth.com/) (email/password only for now), mounted at the bare `/auth` path — **not** under the `${API_PREFIX}/${API_VERSION}` prefix used by every other route, and not documented in the `/docs` Swagger UI (Better Auth's endpoints are raw Express middleware, not Nest controllers, so Swagger can't introspect them). A global `AuthGuard` protects every other route by default — requests without a valid session cookie get `401 Unauthorized`; individual routes opt out with the `@AllowAnonymous()`/`@OptionalAuth()` decorators. Two roles exist (`user`, `admin`), enforced via `@Roles(['admin'])` on admin-only routes; the very first admin has to be promoted directly in the database since Better Auth's own admin endpoints require an existing admin session.
@@ -329,6 +390,19 @@ Full create/attach/reorder/delete curl walkthrough: [`docs/routines.md`](docs/ro
 Authenticated users can upload audio recordings of their practice sessions. Files are stored privately in Google Cloud Storage; only metadata (file name, content type, size, object path) is kept in Postgres. Requires `GCP_PROJECT_ID` and `GCS_RECORDINGS_BUCKET` to be set (see [Environment variables](#environment-variables)). Allowed content types: `audio/mpeg`, `audio/wav`, `audio/x-wav`, `audio/mp4`, `audio/x-m4a`, `audio/ogg`, `audio/webm`; max upload size defaults to 50MB. Sessions and recordings are scoped to the requesting user, same `404`-not-`403` convention as routines.
 
 Full endpoint curl walkthrough and local GCS credential setup: [`docs/practice-recordings.md`](docs/practice-recordings.md).
+
+## AI workflow
+
+Two different ways to turn a natural-language description into a persisted routine, built as two intentionally different AI integration patterns rather than one flexible one:
+
+| | [AI Practice Planner](#ai-practice-planner) | [AI Routine Coach](#ai-routine-coach) |
+|---|---|---|
+| Endpoint | `POST /api/v1/ai/practice-planner` | `POST /api/v1/ai/routine-coach` |
+| SDK | OpenAI Responses API (Structured Outputs) | `@openai/agents` (tool-calling agent loop) |
+| Confirmation before writing | Required — a plan is returned first, nothing persists until confirmed | None — a single call either returns a persisted routine or doesn't |
+| Context gathering | None — plans from the prompt alone, optionally using `web_search` | Agent decides for itself which of four read tools to call before writing |
+
+Use the Planner when the user should see and approve a plan before anything is saved; use the Coach when the app should look at the user's own recent practice history and just build the routine.
 
 ## AI Practice Planner
 
@@ -359,6 +433,18 @@ Full one-time GCP project setup script, gotchas hit getting it working, and how 
 A k6-based smoke test and a small, env-var-configurable load test cover the `practice-sessions` module's create/list/get endpoints — the first performance-testing coverage in the repo, meant as a pattern to copy for other modules. Both scripts self-provision a dedicated test user in `setup()` (sign-in, falling back to sign-up) rather than depending on seeded dev data, tag requests per-workflow for separate latency/error-rate breakdown, and default to `localhost` only, requiring an explicit opt-in to target anything else. A lightweight version also runs in CI on every PR and merge to `main`, against the app's existing deployed (pre-production) Cloud Run environment.
 
 Full setup, env vars, thresholds, and how to read the output: [`docs/performance-testing.md`](docs/performance-testing.md).
+
+## Tradeoffs
+
+A handful of the deliberate tradeoffs behind the design (full rationale for each, plus around a dozen more, in [Architecture decisions](#architecture-decisions) below):
+
+- **Fail-open caching/rate-limiting, fail-closed locking.** A Redis outage degrades `GET /tasks*` to uncached and lets auth rate limits go unenforced rather than breaking requests — but the routine-reorder distributed lock fails closed (`503`), since proceeding without it risks corrupting task order.
+- **A temp-file upload path instead of `file.save(buffer)` for GCS.** The simpler in-memory call reliably raced against the client library's internal stream setup; a paced `fs.createReadStream` avoids it, at the cost of a disk round-trip per upload.
+- **Exactly one `@openai/agents` `Agent`, even for the input guardrail.** The SDK's documented pattern for LLM-based guardrails would mean a second agent; a synchronous keyword heuristic is used instead to keep a "one agent per integration" invariant, at the cost of a less nuanced guardrail.
+- **Prisma error translation duplicated per service, not centralized.** Every service repeats its own `isPrismaErrorCode` helper rather than sharing one — a little duplication, in exchange for not coupling every service to a shared util that would need updating for each new Prisma error code any one of them needs to handle.
+- **Security events are a log stream, not a database table.** Auth failures, rate-limit denials, and AI guardrail trips share one structured log schema instead of a dedicated audit table, leaning on Cloud Logging's retention rather than building out a subsystem this app's size doesn't yet justify.
+- **The RabbitMQ consumer runs in-process, not as a separate worker deployable.** One Nest hybrid app serves HTTP and consumes `routine.created` in the same process — simpler to deploy at this scale, at the cost of HTTP traffic and consumer load sharing the same container.
+- **AI-generated tasks always create a new `Task` row instead of fuzzy-matching an existing one.** Simpler and more predictable than similarity matching, at the cost of the shared task library accumulating near-duplicates over time.
 
 ## Architecture decisions
 
