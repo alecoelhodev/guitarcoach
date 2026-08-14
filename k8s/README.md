@@ -126,6 +126,14 @@ kubectl --context kind-guitar-coach -n guitar-coach-local logs <api-pod> -c migr
 kubectl --context kind-guitar-coach -n guitar-coach-local exec -it <pod> -- sh
 ```
 
+Redis's own container logs (`logs -f deployment/redis`) only show startup/connection events at the default log level, not individual commands. To watch live cache activity while exercising the app, stream commands directly instead:
+
+```bash
+kubectl --context kind-guitar-coach -n guitar-coach-local exec -it deployment/redis -- redis-cli monitor
+# then, in another terminal, hit a cached endpoint (e.g. GET /api/v1/tasks) via
+# the API port-forward below — GET/SET commands appear here in real time
+```
+
 ### Access the API
 
 ```bash
@@ -175,6 +183,23 @@ kubectl --context kind-guitar-coach -n guitar-coach-local delete pod -l app.kube
 ```
 
 Both Postgres and RabbitMQ Deployments use `strategy: {type: Recreate}` rather than the default rolling update — with a `ReadWriteOnce` PVC, a rolling update tries to start the new pod before killing the old one and gets stuck `Pending`/`FailedAttachVolume` because the old pod still holds the volume.
+
+### Seeding data
+
+`npm run db:seed` (`tsx prisma/seed.ts`) is a Node/Prisma script, not SQL, so it can't run *inside* either pod: the `postgres` pod is plain `postgres:17-alpine` with no Node, and the `api` pod's production image strips `tsx` (a `devDependency`) via `npm ci --omit=dev` at build time. Run it from your local machine instead — it already has `tsx` via `npm install` — pointed at the in-cluster Postgres through a port-forward:
+
+```bash
+# In one terminal: forward the postgres Service to a local port. Use 5433,
+# not 5432, to avoid colliding with compose.dev.yaml's own Postgres if
+# that's also running locally.
+kubectl --context kind-guitar-coach -n guitar-coach-local port-forward service/postgres 5433:5432
+
+# In another terminal: run the seed script against that forwarded port,
+# using the same POSTGRES_USER/PASSWORD/DB values from secrets.local.env.
+# The inline DATABASE_URL override (rather than editing .env) keeps this a
+# one-off that doesn't repoint your normal dev database.
+DATABASE_URL="postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@localhost:5433/<POSTGRES_DB>?schema=public" npm run db:seed
+```
 
 ## Troubleshooting
 
