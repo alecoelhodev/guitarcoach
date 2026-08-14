@@ -72,16 +72,24 @@ export class GcpStorageService {
     objectName: string,
     expiresInSeconds: number,
   ): Promise<string> {
-    const [url] = await this.storage
-      .bucket(this.bucketName)
-      .file(objectName)
-      .getSignedUrl({
-        version: 'v4',
-        action: 'read',
-        expires: Date.now() + expiresInSeconds * 1000,
-      });
+    try {
+      const [url] = await this.storage
+        .bucket(this.bucketName)
+        .file(objectName)
+        .getSignedUrl({
+          version: 'v4',
+          action: 'read',
+          expires: Date.now() + expiresInSeconds * 1000,
+        });
 
-    return url;
+      return url;
+    } catch (error) {
+      this.logger.error(
+        `Failed to sign a download URL for object "${objectName}" in bucket "${this.bucketName}"`,
+        error,
+      );
+      throw error;
+    }
   }
 
   async deleteObject(objectName: string): Promise<void> {
