@@ -1,0 +1,16 @@
+# Strategic-merge patch adding local-only, non-secret config to the base
+# ConfigMap (kustomize merges the `data` map by key rather than replacing it
+# wholesale). REDIS_URL/BETTER_AUTH_URL have no embedded credentials so they
+# belong here, not in the Secret. GCP_PROJECT_ID/GCS_RECORDINGS_BUCKET/
+# OPENAI_MODEL are placeholders — see k8s/README.md's GCS/OpenAI limitation
+# note; core Postgres/Redis/RabbitMQ-backed workflows are unaffected.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: guitar-coach-config
+data:
+  REDIS_URL: "redis://redis:6379"
+  BETTER_AUTH_URL: "http://localhost:3000"
+  GCP_PROJECT_ID: "local-dev-placeholder"
+  GCS_RECORDINGS_BUCKET: "local-dev-placeholder"
+  OPENAI_MODEL: "gpt-4.1"

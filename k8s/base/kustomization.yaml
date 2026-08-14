@@ -1,0 +1,11 @@
+# Portable application workloads only — no local-only infrastructure
+# (Postgres/Redis/RabbitMQ), no namespace, no generators. Reused as-is by
+# k8s/overlays/local today and intended for a future staging/GKE overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - weekly-routine-cleanup-cronjob.yaml

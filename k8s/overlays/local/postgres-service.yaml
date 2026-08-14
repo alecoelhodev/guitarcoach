@@ -1,0 +1,18 @@
+# Named `postgres` to match the literal hostname baked into DATABASE_URL in
+# secrets.local.env (Kubernetes has no docker-compose-style ${VAR}
+# interpolation, so the hostname has to match this exactly by hand).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: guitar-coach
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

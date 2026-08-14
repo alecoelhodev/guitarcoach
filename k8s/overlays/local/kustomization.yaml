@@ -1,0 +1,54 @@
+# Local-only infrastructure + config for running the whole guitar-coach app
+# on a `kind` cluster. Run with: kubectl apply -k k8s/overlays/local
+# See k8s/README.md for the full workflow.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: guitar-coach-local
+
+resources:
+  - ../../base
+  - namespace.yaml
+  - postgres-deployment.yaml
+  - postgres-service.yaml
+  - postgres-pvc.yaml
+  - redis-deployment.yaml
+  - redis-service.yaml
+  - rabbitmq-deployment.yaml
+  - rabbitmq-service.yaml
+  - rabbitmq-pvc.yaml
+
+patches:
+  - path: configmap-patch.yaml
+    target:
+      kind: ConfigMap
+      name: guitar-coach-config
+  - path: imagepullpolicy-patch.yaml
+    target:
+      kind: Deployment
+      name: api
+  - path: imagepullpolicy-cronjob-patch.yaml
+    target:
+      kind: CronJob
+      name: weekly-routine-cleanup
+
+# Fixed name (disableNameSuffixHash) rather than kustomize's default
+# content-hash suffix: matches the spec's own `kubectl create secret
+# generic`/`kubectl get secret guitar-coach-secrets`-style documented
+# commands. Losing auto-rollout-on-secret-change costs nothing here — see
+# k8s/README.md, which documents `kubectl rollout restart deployment/api`
+# as the standing command after editing secrets.local.env.
+secretGenerator:
+  - name: guitar-coach-secrets
+    envs:
+      - secrets.local.env
+    options:
+      disableNameSuffixHash: true
+
+# Pins the API image to whatever tag `kind load docker-image` loaded (see
+# k8s/README.md's Docker image workflow). Base references guitar-coach-api:latest
+# purely as a portable placeholder name; this is the only place a real tag is set.
+images:
+  - name: guitar-coach-api:latest
+    newName: guitar-coach-api
+    newTag: local

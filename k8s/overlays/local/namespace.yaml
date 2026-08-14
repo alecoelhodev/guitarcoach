@@ -1,0 +1,8 @@
+# Kustomize's `namespace:` transformer (kustomization.yaml below) only stamps
+# this name onto every other resource — it never creates the Namespace object
+# itself. Without this explicit resource, `kubectl apply -k` fails on a fresh
+# cluster with "namespaces \"guitar-coach-local\" not found".
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: guitar-coach-local

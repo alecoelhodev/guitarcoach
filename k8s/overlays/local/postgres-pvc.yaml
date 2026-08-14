@@ -1,0 +1,15 @@
+# No storageClassName set on purpose — defers to whatever the cluster's
+# default StorageClass is (kind ships one out of the box, "standard", backed
+# by local-path-provisioner). Keeps this portable to a future overlay too,
+# though a GKE overlay would likely swap Postgres out for Cloud SQL entirely
+# rather than reuse this PVC (see k8s/README.md).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -1,0 +1,72 @@
+# Portable API workload: the existing Dockerfile's `production` target image,
+# unmodified. An initContainer runs the same migration step compose.yaml runs
+# inline (`prisma migrate deploy` before the app starts) — using an
+# initContainer instead of overriding `command` keeps the main container's
+# CMD exactly as the Dockerfile defines it, and gives a migration failure its
+# own distinct `Init:Error` pod status instead of hiding inside app logs.
+#
+# No separate worker Deployment: this app has no standalone worker process —
+# the RabbitMQ `routine.created` consumer runs in-process via
+# app.connectMicroservice() in src/main.ts (see CLAUDE.md "hybrid bootstrap").
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app.kubernetes.io/name: api
+    app.kubernetes.io/part-of: guitar-coach
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api
+        app.kubernetes.io/part-of: guitar-coach
+    spec:
+      initContainers:
+        - name: migrate
+          image: guitar-coach-api:latest
+          command: ["./node_modules/.bin/prisma", "migrate", "deploy"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: guitar-coach-secrets
+                  key: DATABASE_URL
+      containers:
+        - name: api
+          image: guitar-coach-api:latest
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: guitar-coach-config
+            - secretRef:
+                name: guitar-coach-secrets
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

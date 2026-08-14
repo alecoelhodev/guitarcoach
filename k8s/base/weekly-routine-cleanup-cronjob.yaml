@@ -1,0 +1,52 @@
+# Faithful translation of the already-externally-scheduled Cloud Run Job +
+# Cloud Scheduler pair documented in docs/weekly-routine-cleanup.md — same
+# schedule ("5 0 * * 1" UTC = every Monday 00:05), same --max-retries=0
+# (backoffLimit: 0) / --task-timeout=5m (activeDeadlineSeconds: 300), same
+# two-var env footprint (DATABASE_URL + ROUTINE_CLEANUP_TIME_ZONE only, kept
+# least-privilege on purpose — see src/weekly-routine-cleanup/env.validation.ts).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-routine-cleanup
+  labels:
+    app.kubernetes.io/name: weekly-routine-cleanup
+    app.kubernetes.io/part-of: guitar-coach
+spec:
+  schedule: "5 0 * * 1"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: weekly-routine-cleanup
+            app.kubernetes.io/part-of: guitar-coach
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: weekly-routine-cleanup
+              image: guitar-coach-api:latest
+              command: ["node", "dist/src/weekly-routine-cleanup/main"]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: guitar-coach-secrets
+                      key: DATABASE_URL
+                - name: ROUTINE_CLEANUP_TIME_ZONE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: guitar-coach-config
+                      key: ROUTINE_CLEANUP_TIME_ZONE
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 300m
+                  memory: 256Mi

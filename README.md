@@ -38,6 +38,7 @@ This file covers architecture, data model, and local setup. Full endpoint walkth
 - [AI Practice Planner](docs/ai-practice-planner.md) — confirmation-gated AI routine planning
 - [AI Routine Coach](docs/ai-routine-coach.md) — no-confirmation AI routine agent and its tools/guardrail
 - [Weekly routine cleanup job](docs/weekly-routine-cleanup.md) — standalone Cloud Run Job setup and selection rules
+- [Local Kubernetes (kind)](k8s/README.md) — run the whole stack on a local `kind` cluster via a reusable Kustomize base + local overlay
 - [Continuous deployment](docs/deployment.md) — CI/CD pipeline, one-time GCP setup, rollback
 - [Performance testing](docs/performance-testing.md) — k6 smoke/load tests for the practice-sessions create/list/get workflows
 - [Architecture decisions](docs/architecture-decisions.md) — rationale behind non-obvious design choices
@@ -311,6 +312,12 @@ npm run start:weekly-routine-cleanup   # run the compiled dist/ build (requires 
 ```
 
 A Husky `pre-commit` hook checks `package-lock.json` stays in sync whenever `package.json` is staged.
+
+## Local Kubernetes (kind)
+
+An alternative to Docker Compose for local development: runs the entire stack (API, Postgres, Redis, RabbitMQ, and the weekly cleanup job as a CronJob) on a local [`kind`](https://kind.sigs.k8s.io/) cluster, reusing the existing Dockerfile unmodified. Structured as a reusable Kustomize `k8s/base/` (portable application workloads) plus `k8s/overlays/local/` (kind-only infrastructure and config), so a future staging/GKE overlay can reuse the same base without redesign — no Helm/Terraform/Ingress in scope yet.
+
+Full workflow (cluster create/delete, image build/load, secrets, deploy/inspect/debug/port-forward, persistence, Kubernetes concepts explained in this app's terms): [`k8s/README.md`](k8s/README.md).
 
 ## Authentication
 

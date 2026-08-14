@@ -1,0 +1,18 @@
+# Non-secret env vars that are genuinely the same across every environment
+# this app runs in (local kind today, staging/GKE later). Only vars worth
+# pinning explicitly are listed here; anything not listed here falls back to
+# its own default in src/config/env.validation.ts. Env-specific values (e.g.
+# REDIS_URL/BETTER_AUTH_URL/GCP_PROJECT_ID) are added by each overlay via a
+# patch instead of living here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: guitar-coach-config
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  API_PREFIX: "api"
+  API_VERSION: "v1"
+  LOG_LEVEL: "log"
+  METRICS_EXPORT_ENABLED: "false"
+  ROUTINE_CLEANUP_TIME_ZONE: "UTC"

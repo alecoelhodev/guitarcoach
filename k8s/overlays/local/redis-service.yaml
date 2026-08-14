@@ -1,0 +1,18 @@
+# Named `redis` to match the literal hostname in REDIS_URL (guitar-coach-config
+# local patch, redis://redis:6379 — no credentials, this app runs Redis
+# without a password, same as compose.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: guitar-coach
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis

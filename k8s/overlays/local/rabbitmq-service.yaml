@@ -1,0 +1,22 @@
+# Named `rabbitmq` to match the hostname baked into RABBITMQ_URL in
+# secrets.local.env. The management port is exposed for local debugging
+# (kubectl port-forward service/rabbitmq 15672:15672) — the app itself only
+# ever uses the amqp port.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: guitar-coach
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+    - name: management
+      port: 15672
+      targetPort: management

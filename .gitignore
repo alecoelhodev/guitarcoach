@@ -61,3 +61,6 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 /k6/results/
 *.k6-summary.json
 *.k6-summary.html
+
+# Local Kubernetes overlay secret values (see k8s/README.md) — never commit
+/k8s/overlays/local/secrets.local.env

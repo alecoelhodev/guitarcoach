@@ -1,0 +1,22 @@
+# kind loads images directly into the node's containerd image store — there
+# is no registry to pull from, so every container referencing the locally
+# built image must set imagePullPolicy: Never. Kind-specific, so it lives
+# here rather than in base (a registry-backed overlay wouldn't want this).
+#
+# Two patches because the API Deployment and the CronJob have differently
+# shaped pod specs (Deployment: spec.template.spec; CronJob:
+# spec.jobTemplate.spec.template.spec) — one strategic-merge patch can't
+# target both.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: migrate
+          imagePullPolicy: Never
+      containers:
+        - name: api
+          imagePullPolicy: Never
