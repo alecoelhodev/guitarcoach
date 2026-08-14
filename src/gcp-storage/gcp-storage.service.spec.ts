@@ -17,27 +17,34 @@ jest.mock('node:fs/promises', () => ({
 
 const TEMP_DIR = '/tmp/gcs-upload-test';
 
+type MockFile = {
+  getSignedUrl: jest.Mock<Promise<[string]>, [Record<string, unknown>]>;
+  delete: jest.Mock;
+};
+
 type MockBucket = {
-  file: jest.Mock;
+  file: jest.Mock<MockFile, [string]>;
   upload: jest.Mock;
 };
 
 describe('GcpStorageService', () => {
   let service: GcpStorageService;
   let bucket: MockBucket;
+  let file: MockFile;
 
   beforeEach(() => {
     (mkdtemp as jest.Mock).mockResolvedValue(TEMP_DIR);
     (writeFile as jest.Mock).mockResolvedValue(undefined);
     (rm as jest.Mock).mockResolvedValue(undefined);
 
+    file = {
+      getSignedUrl: jest
+        .fn<Promise<[string]>, [Record<string, unknown>]>()
+        .mockResolvedValue(['https://signed.example/url']),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
     bucket = {
-      file: jest.fn().mockReturnValue({
-        getSignedUrl: jest
-          .fn()
-          .mockResolvedValue(['https://signed.example/url']),
-        delete: jest.fn().mockResolvedValue(undefined),
-      }),
+      file: jest.fn<MockFile, [string]>().mockReturnValue(file),
       upload: jest.fn().mockResolvedValue(undefined),
     };
     (Storage as unknown as jest.Mock).mockReturnValue({
@@ -97,6 +104,42 @@ describe('GcpStorageService', () => {
         recursive: true,
         force: true,
       });
+    });
+  });
+
+  describe('getSignedDownloadUrl', () => {
+    it('returns a v4 read signed URL for the object', async () => {
+      const now = 1_700_000_000_000;
+      jest.spyOn(Date, 'now').mockReturnValue(now);
+
+      const url = await service.getSignedDownloadUrl('object-name', 900);
+
+      expect(bucket.file).toHaveBeenCalledWith('object-name');
+      expect(file.getSignedUrl).toHaveBeenCalledWith({
+        version: 'v4',
+        action: 'read',
+        expires: now + 900 * 1000,
+      });
+      expect(url).toBe('https://signed.example/url');
+    });
+
+    it('logs context and rethrows when signing fails', async () => {
+      const error = new Error(
+        "Permission 'iam.serviceAccounts.signBlob' denied on resource",
+      );
+      file.getSignedUrl.mockRejectedValue(error);
+      const loggerErrorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      await expect(
+        service.getSignedDownloadUrl('object-name', 900),
+      ).rejects.toBe(error);
+
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('object-name'),
+        error,
+      );
     });
   });
 });
