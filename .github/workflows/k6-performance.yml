@@ -65,6 +65,17 @@ jobs:
           K6_ALLOW_NON_LOCAL: 'true'
           K6_TEST_USER_EMAIL: ${{ steps.secrets.outputs.K6_TEST_USER_EMAIL }}
           K6_TEST_USER_PASSWORD: ${{ steps.secrets.outputs.K6_TEST_USER_PASSWORD }}
+          # Same CI-relaxed latency thresholds as the load step below, for the
+          # same reason (remote/staging network variance vs. the localhost-
+          # tuned 500/1000ms defaults) — see docs/performance-testing.md. This
+          # single-iteration smoke run is especially exposed to it: `create`
+          # is the first real workload request of the whole job, right after
+          # setup()'s sign-in/sign-up, with no warm-up request to absorb a
+          # Cloud Run cold start. The functional-correctness bars (checks,
+          # per-workflow http_req_failed) stay hard-coded in the script and
+          # are not affected by these two vars.
+          K6_THRESHOLD_P95_MS: '800'
+          K6_THRESHOLD_P99_MS: '1500'
         run: npm run perf:smoke
 
       - name: Run k6 short load test (staging, low concurrency)
