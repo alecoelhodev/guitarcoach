@@ -3,10 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, User } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { SecurityEventLogger } from '../observability/security-event.logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UserResponseDto } from './dto/user-response.dto';
 
 const PRISMA_ERROR_UNIQUE_CONSTRAINT = 'P2002';
 const PRISMA_ERROR_RECORD_NOT_FOUND = 'P2025';
@@ -31,11 +32,11 @@ export class UsersService {
     private readonly securityEventLogger: SecurityEventLogger,
   ) {}
 
-  findAll(): Promise<User[]> {
+  findAll(): Promise<UserResponseDto[]> {
     return this.prisma.user.findMany();
   }
 
-  async findById(id: string): Promise<User> {
+  async findById(id: string): Promise<UserResponseDto> {
     const user = await this.prisma.user.findUnique({ where: { id } });
 
     if (!user) {
@@ -45,7 +46,7 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<User> {
+  async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
     const data: Prisma.UserUpdateInput = {};
     if (dto.email !== undefined) {
       data.email = normalizeEmail(dto.email);

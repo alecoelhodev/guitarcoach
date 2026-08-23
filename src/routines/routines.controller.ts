@@ -12,18 +12,21 @@ import {
 } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
-import { Routine, RoutineTask } from '../generated/prisma/client';
 import { AddRoutineTaskDto } from './dto/add-routine-task.dto';
 import { CreateRoutineDto } from './dto/create-routine.dto';
 import { FindRoutinesQueryDto } from './dto/find-routines-query.dto';
 import { ReorderRoutineTasksDto } from './dto/reorder-routine-tasks.dto';
+import {
+  PaginatedRoutinesResponseDto,
+  RoutineResponseDto,
+} from './dto/routine-response.dto';
+import {
+  RoutineTaskResponseDto,
+  RoutineTaskWithTaskResponseDto,
+} from './dto/routine-task-response.dto';
 import { UpdateRoutineDto } from './dto/update-routine.dto';
 import { UpdateRoutineTaskDto } from './dto/update-routine-task.dto';
-import {
-  PaginatedResult,
-  RoutinesService,
-  RoutineTaskWithTask,
-} from './routines.service';
+import { RoutinesService } from './routines.service';
 
 @Controller('routines')
 export class RoutinesController {
@@ -33,7 +36,7 @@ export class RoutinesController {
   create(
     @Session() session: UserSession,
     @Body() createRoutineDto: CreateRoutineDto,
-  ): Promise<Routine> {
+  ): Promise<RoutineResponseDto> {
     return this.routinesService.create(session.user.id, createRoutineDto);
   }
 
@@ -41,7 +44,7 @@ export class RoutinesController {
   findAll(
     @Session() session: UserSession,
     @Query() query: FindRoutinesQueryDto,
-  ): Promise<PaginatedResult<Routine>> {
+  ): Promise<PaginatedRoutinesResponseDto> {
     return this.routinesService.findAll(session.user.id, query);
   }
 
@@ -49,7 +52,7 @@ export class RoutinesController {
   findOne(
     @Session() session: UserSession,
     @Param('id') id: string,
-  ): Promise<Routine> {
+  ): Promise<RoutineResponseDto> {
     return this.routinesService.findById(session.user.id, id);
   }
 
@@ -58,7 +61,7 @@ export class RoutinesController {
     @Session() session: UserSession,
     @Param('id') id: string,
     @Body() updateRoutineDto: UpdateRoutineDto,
-  ): Promise<Routine> {
+  ): Promise<RoutineResponseDto> {
     return this.routinesService.update(session.user.id, id, updateRoutineDto);
   }
 
@@ -76,7 +79,7 @@ export class RoutinesController {
     @Session() session: UserSession,
     @Param('routineId') routineId: string,
     @Body() addRoutineTaskDto: AddRoutineTaskDto,
-  ): Promise<RoutineTask> {
+  ): Promise<RoutineTaskResponseDto> {
     return this.routinesService.addTask(
       session.user.id,
       routineId,
@@ -88,7 +91,7 @@ export class RoutinesController {
   findTasks(
     @Session() session: UserSession,
     @Param('routineId') routineId: string,
-  ): Promise<RoutineTaskWithTask[]> {
+  ): Promise<RoutineTaskWithTaskResponseDto[]> {
     return this.routinesService.findTasks(session.user.id, routineId);
   }
 
@@ -97,7 +100,7 @@ export class RoutinesController {
     @Session() session: UserSession,
     @Param('routineId') routineId: string,
     @Body() reorderRoutineTasksDto: ReorderRoutineTasksDto,
-  ): Promise<RoutineTask[]> {
+  ): Promise<RoutineTaskResponseDto[]> {
     return this.routinesService.reorderTasks(
       session.user.id,
       routineId,
@@ -111,7 +114,7 @@ export class RoutinesController {
     @Param('routineId') routineId: string,
     @Param('taskId') taskId: string,
     @Body() updateRoutineTaskDto: UpdateRoutineTaskDto,
-  ): Promise<RoutineTask> {
+  ): Promise<RoutineTaskResponseDto> {
     return this.routinesService.updateTask(
       session.user.id,
       routineId,

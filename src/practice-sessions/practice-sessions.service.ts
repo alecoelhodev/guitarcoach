@@ -1,10 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, PracticeSession } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RoutinesService } from '../routines/routines.service';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
+import { FindPracticeSessionsQueryDto } from './dto/find-practice-sessions-query.dto';
+import {
+  PaginatedPracticeSessionsResponseDto,
+  PracticeSessionResponseDto,
+} from './dto/practice-session-response.dto';
 
 const PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT = 'P2003';
+
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 20;
 
 function isPrismaErrorCode(
   error: unknown,
@@ -50,7 +58,7 @@ export class PracticeSessionsService {
   async create(
     userId: string,
     dto: CreatePracticeSessionDto,
-  ): Promise<PracticeSession> {
+  ): Promise<PracticeSessionResponseDto> {
     const { routineId, tasks, ...rest } = dto;
 
     // Ownership check reused from RoutinesService rather than reimplemented
@@ -75,6 +83,7 @@ export class PracticeSessionsService {
             },
           }),
         },
+        include: { sessionTasks: true },
       });
     } catch (error) {
       if (isPrismaErrorCode(error, PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT)) {
@@ -84,16 +93,37 @@ export class PracticeSessionsService {
     }
   }
 
-  findAll(userId: string): Promise<PracticeSession[]> {
-    return this.prisma.practiceSession.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(
+    userId: string,
+    query: FindPracticeSessionsQueryDto,
+  ): Promise<PaginatedPracticeSessionsResponseDto> {
+    const page = query.page ?? DEFAULT_PAGE;
+    const limit = query.limit ?? DEFAULT_LIMIT;
+
+    const [data, total] = await Promise.all([
+      this.prisma.practiceSession.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        include: { sessionTasks: true },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.practiceSession.count({ where: { userId } }),
+    ]);
+
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
-  async findById(userId: string, id: string): Promise<PracticeSession> {
+  async findById(
+    userId: string,
+    id: string,
+  ): Promise<PracticeSessionResponseDto> {
     const session = await this.prisma.practiceSession.findFirst({
       where: { id, userId },
+      include: { sessionTasks: true },
     });
 
     if (!session) {

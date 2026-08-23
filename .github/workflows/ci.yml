@@ -34,3 +34,22 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Generate OpenAPI schema and check it's committed
+        run: npm run openapi:check
+        env:
+          NODE_ENV: test
+          PORT: '3000'
+          API_PREFIX: api
+          API_VERSION: v1
+          DATABASE_URL: postgres://user:pass@localhost:5432/db
+          BETTER_AUTH_SECRET: ci-placeholder-secret-at-least-32-chars-long
+          BETTER_AUTH_URL: http://localhost:3000
+          REDIS_URL: redis://localhost:6379
+          RABBITMQ_URL: amqp://localhost:5672
+          GCP_PROJECT_ID: ci-placeholder
+          GCS_RECORDINGS_BUCKET: ci-placeholder
+          OPENAI_API_KEY: ci-placeholder
+          OPENAI_MODEL: gpt-4o-mini
+          LOG_LEVEL: error
+          METRICS_EXPORT_ENABLED: 'false'

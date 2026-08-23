@@ -19,7 +19,7 @@ import { AGENT_RUNNER } from './agent/agent-runner';
 import type { AgentRunner } from './agent/agent-runner';
 import { RoutineCoachContext } from './agent/routine-coach.context';
 import { RoutineCoachAgentFactory } from './agent/routine-coach-agent.factory';
-import { RoutineCoachResponse } from './dto/routine-coach-response';
+import { RoutineCoachResponseDto } from './dto/routine-coach-response.dto';
 import { ROUTINE_COACH_MAX_TURNS } from './tools/tool-constants';
 
 @Injectable()
@@ -34,7 +34,7 @@ export class AiRoutineCoachService {
   async handleRequest(
     userId: string,
     message: string,
-  ): Promise<RoutineCoachResponse> {
+  ): Promise<RoutineCoachResponseDto> {
     const agent = this.agentFactory.getAgent();
     const context: RoutineCoachContext = { userId };
 

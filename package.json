@@ -30,7 +30,9 @@
     "perf:smoke": "k6 run k6/practice-sessions-smoke.js",
     "perf:load": "k6 run k6/practice-sessions-load.js",
     "weekly-routine-cleanup": "tsx src/weekly-routine-cleanup/main.ts",
-    "start:weekly-routine-cleanup": "node dist/src/weekly-routine-cleanup/main"
+    "start:weekly-routine-cleanup": "node dist/src/weekly-routine-cleanup/main",
+    "openapi:generate": "nest build && node dist/scripts/generate-openapi.js",
+    "openapi:check": "npm run openapi:generate && git diff --exit-code openapi.json"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

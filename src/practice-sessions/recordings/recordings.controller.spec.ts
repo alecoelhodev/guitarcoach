@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { RecordingsController } from './recordings.controller';
-import { DownloadUrlResponse, RecordingsService } from './recordings.service';
+import { DownloadUrlResponseDto } from './dto/recording-response.dto';
+import { RecordingsService } from './recordings.service';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
 const RECORDING_ID = 'a3f1c2d4-3333-4b2a-9c3d-000000000000';
@@ -32,7 +33,7 @@ describe('RecordingsController', () => {
   });
 
   it('scopes getDownloadUrl() to the session user', async () => {
-    const response: DownloadUrlResponse = {
+    const response: DownloadUrlResponseDto = {
       url: 'https://signed.example/take.mp3',
     };
     service.getDownloadUrl.mockResolvedValue(response);

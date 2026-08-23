@@ -39,6 +39,7 @@ type MockPrismaService = {
     findMany: jest.Mock;
     findFirst: jest.Mock;
     deleteMany: jest.Mock;
+    count: jest.Mock;
   };
   practiceSessionTask: {
     findMany: jest.Mock;
@@ -66,6 +67,7 @@ describe('PracticeSessionsService', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
         deleteMany: jest.fn(),
+        count: jest.fn(),
       },
       practiceSessionTask: {
         findMany: jest.fn(),
@@ -108,6 +110,7 @@ describe('PracticeSessionsService', () => {
           userId: USER_ID,
           routineId: undefined,
         },
+        include: { sessionTasks: true },
       });
       expect(session).toEqual(created);
     });
@@ -125,6 +128,7 @@ describe('PracticeSessionsService', () => {
       );
       expect(prisma.practiceSession.create).toHaveBeenCalledWith({
         data: { userId: USER_ID, routineId: ROUTINE_ID },
+        include: { sessionTasks: true },
       });
     });
 
@@ -163,6 +167,7 @@ describe('PracticeSessionsService', () => {
             ],
           },
         },
+        include: { sessionTasks: true },
       });
     });
 
@@ -183,17 +188,38 @@ describe('PracticeSessionsService', () => {
   });
 
   describe('findAll', () => {
-    it('scopes results to the owning user, most recent first', async () => {
+    it('returns a paginated result scoped to the owning user, most recent first', async () => {
       const sessions = [buildPracticeSession()];
       prisma.practiceSession.findMany.mockResolvedValue(sessions);
+      prisma.practiceSession.count.mockResolvedValue(1);
 
-      const result = await service.findAll(USER_ID);
+      const result = await service.findAll(USER_ID, {});
 
       expect(prisma.practiceSession.findMany).toHaveBeenCalledWith({
         where: { userId: USER_ID },
         orderBy: { createdAt: 'desc' },
+        include: { sessionTasks: true },
+        skip: 0,
+        take: 20,
       });
-      expect(result).toEqual(sessions);
+      expect(prisma.practiceSession.count).toHaveBeenCalledWith({
+        where: { userId: USER_ID },
+      });
+      expect(result).toEqual({
+        data: sessions,
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      });
+    });
+
+    it('applies page and limit', async () => {
+      prisma.practiceSession.findMany.mockResolvedValue([]);
+      prisma.practiceSession.count.mockResolvedValue(0);
+
+      await service.findAll(USER_ID, { page: 2, limit: 5 });
+
+      expect(prisma.practiceSession.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ skip: 5, take: 5 }),
+      );
     });
   });
 
@@ -207,6 +233,7 @@ describe('PracticeSessionsService', () => {
       );
       expect(prisma.practiceSession.findFirst).toHaveBeenCalledWith({
         where: { id: created.id, userId: USER_ID },
+        include: { sessionTasks: true },
       });
     });
 

@@ -1,12 +1,13 @@
 import { NestFactory } from '@nestjs/core';
 import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config/env.validation';
 import { correlationIdMiddleware } from './observability/correlation-id.middleware';
 import { StructuredLoggerService } from './observability/structured-logger.service';
 import { routineEventsRmqOptions } from './routines/events/rabbitmq.constants';
+import { buildSwaggerConfig } from './swagger.config';
 
 // @openai/agents-core's TraceProvider installs its own process-wide
 // 'unhandledRejection' listener (dist/tracing/provider.js) that calls
@@ -66,11 +67,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Guitar Coach API')
-    .setDescription('API documentation for the Guitar Coach backend')
-    .setVersion(apiVersion)
-    .build();
+  const swaggerConfig = buildSwaggerConfig(apiVersion);
   const swaggerDocument = () =>
     SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDocument);

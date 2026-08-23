@@ -111,13 +111,16 @@ describe('PracticeSessionsController', () => {
   });
 
   it('scopes findAll() to the session user', async () => {
-    const sessions = [buildPracticeSession()];
-    practiceSessionsService.findAll.mockResolvedValue(sessions);
+    const paginated = {
+      data: [buildPracticeSession()],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    };
+    practiceSessionsService.findAll.mockResolvedValue(paginated);
 
-    const result = await controller.findAll(buildSession());
+    const result = await controller.findAll(buildSession(), {});
 
-    expect(practiceSessionsService.findAll).toHaveBeenCalledWith(USER_ID);
-    expect(result).toEqual(sessions);
+    expect(practiceSessionsService.findAll).toHaveBeenCalledWith(USER_ID, {});
+    expect(result).toEqual(paginated);
   });
 
   it('scopes findOne() to the session user', async () => {

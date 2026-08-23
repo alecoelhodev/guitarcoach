@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { Routine, RoutineTask } from '../generated/prisma/client';
+import { PaginatedRoutinesResponseDto } from './dto/routine-response.dto';
 import { RoutinesController } from './routines.controller';
-import { PaginatedResult, RoutinesService } from './routines.service';
+import { RoutinesService } from './routines.service';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
 const ROUTINE_ID = 'a3f1c2d4-1111-4b2a-9c3d-000000000000';
@@ -91,7 +92,7 @@ describe('RoutinesController', () => {
   });
 
   it('scopes findAll() to the session user', async () => {
-    const paginated: PaginatedResult<Routine> = {
+    const paginated: PaginatedRoutinesResponseDto = {
       data: [buildRoutine()],
       meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
     };
