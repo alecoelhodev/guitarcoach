@@ -13,9 +13,15 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
-import { PracticeSession, Recording } from '../generated/prisma/client';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import { DeletePracticeSessionsQueryDto } from './dto/delete-practice-sessions-query.dto';
+import { FindPracticeSessionsQueryDto } from './dto/find-practice-sessions-query.dto';
+import {
+  DeleteResultResponseDto,
+  PaginatedPracticeSessionsResponseDto,
+  PracticeSessionResponseDto,
+} from './dto/practice-session-response.dto';
+import { RecordingResponseDto } from './recordings/dto/recording-response.dto';
 import { RecordingsService } from './recordings/recordings.service';
 import { PracticeSessionsService } from './practice-sessions.service';
 
@@ -30,7 +36,7 @@ export class PracticeSessionsController {
   create(
     @Session() session: UserSession,
     @Body() createPracticeSessionDto: CreatePracticeSessionDto,
-  ): Promise<PracticeSession> {
+  ): Promise<PracticeSessionResponseDto> {
     return this.practiceSessionsService.create(
       session.user.id,
       createPracticeSessionDto,
@@ -38,8 +44,11 @@ export class PracticeSessionsController {
   }
 
   @Get()
-  findAll(@Session() session: UserSession): Promise<PracticeSession[]> {
-    return this.practiceSessionsService.findAll(session.user.id);
+  findAll(
+    @Session() session: UserSession,
+    @Query() query: FindPracticeSessionsQueryDto,
+  ): Promise<PaginatedPracticeSessionsResponseDto> {
+    return this.practiceSessionsService.findAll(session.user.id, query);
   }
 
   // Bulk delete by exact title match, scoped to the caller's own sessions --
@@ -49,7 +58,7 @@ export class PracticeSessionsController {
   async deleteByTitle(
     @Session() session: UserSession,
     @Query() query: DeletePracticeSessionsQueryDto,
-  ): Promise<{ deletedCount: number }> {
+  ): Promise<DeleteResultResponseDto> {
     const deletedCount = await this.practiceSessionsService.deleteByTitle(
       session.user.id,
       query.title,
@@ -61,7 +70,7 @@ export class PracticeSessionsController {
   findOne(
     @Session() session: UserSession,
     @Param('sessionId') sessionId: string,
-  ): Promise<PracticeSession> {
+  ): Promise<PracticeSessionResponseDto> {
     return this.practiceSessionsService.findById(session.user.id, sessionId);
   }
 
@@ -71,7 +80,7 @@ export class PracticeSessionsController {
     @Session() session: UserSession,
     @Param('sessionId') sessionId: string,
     @UploadedFile() file?: Express.Multer.File,
-  ): Promise<Recording> {
+  ): Promise<RecordingResponseDto> {
     if (!file) {
       throw new BadRequestException('No file was uploaded');
     }
@@ -83,7 +92,7 @@ export class PracticeSessionsController {
   findRecordings(
     @Session() session: UserSession,
     @Param('sessionId') sessionId: string,
-  ): Promise<Recording[]> {
+  ): Promise<RecordingResponseDto[]> {
     return this.recordingsService.findAllForSession(session.user.id, sessionId);
   }
 }

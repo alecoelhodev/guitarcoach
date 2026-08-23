@@ -8,7 +8,8 @@ import {
 } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
-import { DownloadUrlResponse, RecordingsService } from './recordings.service';
+import { DownloadUrlResponseDto } from './dto/recording-response.dto';
+import { RecordingsService } from './recordings.service';
 
 @Controller('recordings')
 export class RecordingsController {
@@ -18,7 +19,7 @@ export class RecordingsController {
   getDownloadUrl(
     @Session() session: UserSession,
     @Param('recordingId') recordingId: string,
-  ): Promise<DownloadUrlResponse> {
+  ): Promise<DownloadUrlResponseDto> {
     return this.recordingsService.getDownloadUrl(session.user.id, recordingId);
   }
 

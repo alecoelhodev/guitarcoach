@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { Prisma, Routine, RoutineTask } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisLockService } from '../redis/redis-lock.service';
 import { RoutineCreatedProducer } from './events/routine-created.producer';
@@ -14,6 +14,14 @@ import { AddRoutineTaskDto } from './dto/add-routine-task.dto';
 import { CreateRoutineDto } from './dto/create-routine.dto';
 import { FindRoutinesQueryDto } from './dto/find-routines-query.dto';
 import { ReorderRoutineTasksDto } from './dto/reorder-routine-tasks.dto';
+import {
+  PaginatedRoutinesResponseDto,
+  RoutineResponseDto,
+} from './dto/routine-response.dto';
+import {
+  RoutineTaskResponseDto,
+  RoutineTaskWithTaskResponseDto,
+} from './dto/routine-task-response.dto';
 import { UpdateRoutineDto } from './dto/update-routine.dto';
 import { UpdateRoutineTaskDto } from './dto/update-routine-task.dto';
 
@@ -28,20 +36,6 @@ const DEFAULT_LIMIT = 20;
 // mid-transaction the lock still self-clears via this TTL instead of
 // blocking the routine's reorder endpoint forever.
 const REORDER_LOCK_TTL_MS = 5000;
-
-export interface PaginatedResult<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
-}
-
-export type RoutineTaskWithTask = Prisma.RoutineTaskGetPayload<{
-  include: { task: true };
-}>;
 
 export type RoutineWithTasks = Prisma.RoutineGetPayload<{
   include: { routineTasks: { include: { task: true } } };
@@ -70,7 +64,10 @@ export class RoutinesService {
     private readonly routineCreatedProducer: RoutineCreatedProducer,
   ) {}
 
-  async create(userId: string, dto: CreateRoutineDto): Promise<Routine> {
+  async create(
+    userId: string,
+    dto: CreateRoutineDto,
+  ): Promise<RoutineResponseDto> {
     const routine = await this.prisma.routine.create({
       data: { ...dto, userId },
     });
@@ -92,7 +89,7 @@ export class RoutinesService {
   async findAll(
     userId: string,
     query: FindRoutinesQueryDto,
-  ): Promise<PaginatedResult<Routine>> {
+  ): Promise<PaginatedRoutinesResponseDto> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;
 
@@ -117,7 +114,7 @@ export class RoutinesService {
     };
   }
 
-  async findById(userId: string, id: string): Promise<Routine> {
+  async findById(userId: string, id: string): Promise<RoutineResponseDto> {
     const routine = await this.prisma.routine.findFirst({
       where: { id, userId },
     });
@@ -145,7 +142,7 @@ export class RoutinesService {
     userId: string,
     id: string,
     dto: UpdateRoutineDto,
-  ): Promise<Routine> {
+  ): Promise<RoutineResponseDto> {
     const { count } = await this.prisma.routine.updateMany({
       where: { id, userId },
       data: dto,
@@ -180,7 +177,7 @@ export class RoutinesService {
   async findTasks(
     userId: string,
     routineId: string,
-  ): Promise<RoutineTaskWithTask[]> {
+  ): Promise<RoutineTaskWithTaskResponseDto[]> {
     await this.findById(userId, routineId);
 
     return this.prisma.routineTask.findMany({
@@ -194,7 +191,7 @@ export class RoutinesService {
     userId: string,
     routineId: string,
     dto: AddRoutineTaskDto,
-  ): Promise<RoutineTask> {
+  ): Promise<RoutineTaskResponseDto> {
     await this.findById(userId, routineId);
     const position = dto.position ?? (await this.nextPosition(routineId));
 
@@ -234,7 +231,7 @@ export class RoutinesService {
     routineId: string,
     taskId: string,
     dto: UpdateRoutineTaskDto,
-  ): Promise<RoutineTask> {
+  ): Promise<RoutineTaskResponseDto> {
     await this.findById(userId, routineId);
 
     try {
@@ -282,7 +279,7 @@ export class RoutinesService {
     userId: string,
     routineId: string,
     dto: ReorderRoutineTasksDto,
-  ): Promise<RoutineTask[]> {
+  ): Promise<RoutineTaskResponseDto[]> {
     await this.findById(userId, routineId);
 
     // Two concurrent reorders for the same routine can both pass validation

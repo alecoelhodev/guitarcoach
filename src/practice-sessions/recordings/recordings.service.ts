@@ -2,14 +2,13 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { EnvironmentVariables } from '../../config/env.validation';
-import { Recording } from '../../generated/prisma/client';
 import { GcpStorageService } from '../../gcp-storage/gcp-storage.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PracticeSessionsService } from '../practice-sessions.service';
-
-export interface DownloadUrlResponse {
-  url: string;
-}
+import {
+  DownloadUrlResponseDto,
+  RecordingResponseDto,
+} from './dto/recording-response.dto';
 
 function notFound(id: string): NotFoundException {
   return new NotFoundException(`Recording with id "${id}" not found`);
@@ -38,7 +37,7 @@ export class RecordingsService {
     userId: string,
     practiceSessionId: string,
     file: Express.Multer.File,
-  ): Promise<Recording> {
+  ): Promise<RecordingResponseDto> {
     await this.practiceSessionsService.findById(userId, practiceSessionId);
 
     const objectName = `users/${userId}/practice-sessions/${practiceSessionId}/${randomUUID()}-${sanitizeFileName(file.originalname)}`;
@@ -72,7 +71,7 @@ export class RecordingsService {
   async findAllForSession(
     userId: string,
     practiceSessionId: string,
-  ): Promise<Recording[]> {
+  ): Promise<RecordingResponseDto[]> {
     await this.practiceSessionsService.findById(userId, practiceSessionId);
 
     return this.prisma.recording.findMany({
@@ -84,7 +83,7 @@ export class RecordingsService {
   async getDownloadUrl(
     userId: string,
     id: string,
-  ): Promise<DownloadUrlResponse> {
+  ): Promise<DownloadUrlResponseDto> {
     const recording = await this.findOwnedRecording(userId, id);
     const expiresInSeconds = this.configService.get(
       'RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS',
@@ -109,7 +108,7 @@ export class RecordingsService {
   private async findOwnedRecording(
     userId: string,
     id: string,
-  ): Promise<Recording> {
+  ): Promise<RecordingResponseDto> {
     const recording = await this.prisma.recording.findFirst({
       where: { id, userId },
     });

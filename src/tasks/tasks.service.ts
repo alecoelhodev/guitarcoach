@@ -12,6 +12,10 @@ import { meters } from '../observability/metrics/meters';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { FindTasksQueryDto } from './dto/find-tasks-query.dto';
+import {
+  PaginatedTasksResponseDto,
+  TaskResponseDto,
+} from './dto/task-response.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 
 const PRISMA_ERROR_RECORD_NOT_FOUND = 'P2025';
@@ -54,13 +58,13 @@ export class TasksService {
     @Inject(CACHE_MANAGER) private readonly cache: Cache,
   ) {}
 
-  async create(dto: CreateTaskDto): Promise<Task> {
+  async create(dto: CreateTaskDto): Promise<TaskResponseDto> {
     const task = await this.prisma.task.create({ data: dto });
     await this.bumpListCacheVersion();
     return task;
   }
 
-  async findAll(query: FindTasksQueryDto): Promise<PaginatedResult<Task>> {
+  async findAll(query: FindTasksQueryDto): Promise<PaginatedTasksResponseDto> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;
 
@@ -107,7 +111,7 @@ export class TasksService {
     return this.prisma.task.findMany({ orderBy: { createdAt: 'desc' } });
   }
 
-  async findById(id: string): Promise<Task> {
+  async findById(id: string): Promise<TaskResponseDto> {
     const cacheKey = this.taskCacheKey(id);
     const cached = await this.safeCacheGet<Task>(cacheKey);
     if (cached) {
@@ -125,7 +129,7 @@ export class TasksService {
     return task;
   }
 
-  async update(id: string, dto: UpdateTaskDto): Promise<Task> {
+  async update(id: string, dto: UpdateTaskDto): Promise<TaskResponseDto> {
     try {
       const task = await this.prisma.task.update({
         where: { id },
