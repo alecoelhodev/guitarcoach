@@ -12,6 +12,7 @@ Backend API for Guitar Coach, built with [NestJS](https://nestjs.com/).
 - [Data model](#data-model)
 - [Local setup](#local-setup)
 - [API examples](#api-examples)
+- [API contract](#api-contract)
 - [Authentication](#authentication)
 - [Routines](#routines)
 - [Practice recordings](#practice-recordings)
@@ -52,7 +53,7 @@ Cross-cutting infra (not feature modules, but wired globally in `AppModule`): a 
 
 **Tech stack**: NestJS 11 (Express), TypeScript, Prisma 7 with the `@prisma/adapter-pg` driver adapter, Postgres 17, Better Auth 1.6, Redis 8, RabbitMQ 4, Google Cloud Storage, the OpenAI Node SDK (Responses API) and the `@openai/agents` Agents SDK, Zod (config validation), class-validator/class-transformer (request DTOs), Jest (unit + e2e).
 
-API docs are served by Swagger UI at `/docs` once the app is running (covers the Nest-controller routes below; Better Auth's own `/auth/*` endpoints aren't introspectable by Swagger — see [Authentication](#authentication)).
+API docs are served by Swagger UI at `/docs` once the app is running, and the same OpenAPI document is generated into a committed `openapi.json` at the repo root that CI keeps in lockstep with the code — that file is the contract a frontend generates its client from (see [API contract](#api-contract)). Both cover the Nest-controller routes below; Better Auth's own `/auth/*` endpoints aren't introspectable by Swagger — see [Authentication](#authentication).
 
 ## Documentation
 
@@ -66,6 +67,7 @@ This file covers architecture, data model, and local setup. Full endpoint walkth
 - [AI Routine Coach](docs/ai-routine-coach.md) — no-confirmation AI routine agent and its tools/guardrail
 - [Weekly routine cleanup job](docs/weekly-routine-cleanup.md) — standalone Cloud Run Job setup and selection rules
 - [Continuous deployment](docs/deployment.md) — CI/CD pipeline, one-time GCP setup, rollback
+- [API contract](docs/api-contract.md) — the committed `openapi.json`, response-DTO conventions, and how a frontend stays in sync
 - [Performance testing](docs/performance-testing.md) — k6 smoke/load tests for the practice-sessions create/list/get workflows
 - [Architecture decisions](docs/architecture-decisions.md) — rationale behind non-obvious design choices
 - [Monitoring & alerting](docs/monitoring/README.md) — OTel metrics, alert policies, log-based metrics
@@ -372,6 +374,19 @@ curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/ai/routine-coach \
   -H 'Content-Type: application/json' \
   -d '{"message":"Create a 30-minute warm-up routine for today."}'
 ```
+
+## API contract
+
+The OpenAPI document is a **committed artifact**: `openapi.json` at the repo root is generated from the controllers and their `*ResponseDto` classes, checked into git, and verified by CI. `npm run openapi:check` regenerates it and fails on any diff, so a route or DTO change can't be merged without the regenerated file alongside it — which is exactly how backend and frontend stay in sync: the frontend generates its types/client from `openapi.json` rather than hand-mirroring these DTOs, and every contract change arrives as a reviewable diff on one file.
+
+```bash
+npm run openapi:generate   # write openapi.json from the current code
+npm run openapi:check      # regenerate + `git diff --exit-code openapi.json` (what CI runs)
+```
+
+Generated paths include the `${API_PREFIX}/${API_VERSION}` prefix the app actually serves (the health probes excepted, as at runtime), so a client only supplies an origin as its base URL. Remaining caveats worth knowing up front: `servers` is empty, auth is a session cookie with no `securitySchemes` entry to generate from, Better Auth's `/auth/*` routes are absent entirely (raw Express middleware, not introspectable), and only success responses are documented.
+
+Response-DTO conventions, the `oneOf` pattern for the AI planner's union response, and the full frontend workflow: [`docs/api-contract.md`](docs/api-contract.md).
 
 ## Authentication
 
