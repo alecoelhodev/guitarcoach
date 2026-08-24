@@ -34,9 +34,9 @@ Both scripts (`k6/practice-sessions-smoke.js`, `k6/practice-sessions-load.js`) r
 
 - `create` — `POST /api/v1/practice-sessions` with a minimal `{ title }` body (no `routineId`/`tasks`, to keep this test self-contained and independent of the Routines/Tasks modules). `title` is always the same fixed literal (`k6 practice session`) so cleanup (below) can find everything a run created.
 - `get` — `GET /api/v1/practice-sessions/:id` for the session just created.
-- `list` — `GET /api/v1/practice-sessions`.
+- `list` — `GET /api/v1/practice-sessions`. Paginated, so the check asserts the `{ data, meta }` envelope (an array `data` plus a numeric `meta.total`) rather than a bare array, and the measured response stays bounded at the default page size (20) however many sessions a long run accumulates — `meta.total` is what keeps growing.
 
-Once, at the very end of a run — not per-iteration — `teardown()` calls `DELETE /api/v1/practice-sessions?title=k6%20practice%20session` to remove everything that run created (see "Test data / cleanup" below). This runs once regardless of VU count and even if thresholds failed, so a run never leaves residue behind, while the `list` workload above still gets to exercise a genuinely growing history *during* the run — cleanup only happens after.
+Once, at the very end of a run — not per-iteration — `teardown()` calls `DELETE /api/v1/practice-sessions?title=k6%20practice%20session` to remove everything that run created (see "Test data / cleanup" below). This runs once regardless of VU count and even if thresholds failed, so a run never leaves residue behind, while the `list` workload above still gets to exercise a genuinely growing history *during* the run — cleanup only happens after. (With pagination, that growth shows up as a rising `meta.total` and more rows for Postgres to count/offset, not a larger response body.)
 
 Each request is tagged (`{ name: 'create' | 'list' | 'get' }`) so their latency/error metrics are reported separately, not blended into one overall number. Each also has a `check()` asserting both the HTTP status *and* a minimally-shaped response body (e.g. `create` checks for a string `id`, `get` checks the returned `id` matches) — a `200`/`201` with a malformed or empty body fails the run, not just a non-2xx status.
 

@@ -38,13 +38,15 @@ export function listPracticeSessions(cookieHeader) {
     headers: { Cookie: cookieHeader },
     tags: { name: 'list' },
   });
-  // Deliberately not scanning array contents here: parsing/inspecting a
-  // growing, unpaginated list on every iteration would distort the very
-  // `list` latency this workflow is measuring over a longer run.
+  // The endpoint is paginated: `{ data, meta }`, not a bare array. Shape is
+  // asserted at the envelope level only -- deliberately not scanning
+  // `data`'s contents, since inspecting every page on every iteration would
+  // distort the very `list` latency this workflow is measuring.
   const body = parseBody(res);
   check(res, {
     'list: status 200': (r) => r.status === 200,
-    'list: is array': () => Array.isArray(body),
+    'list: paginated envelope': () =>
+      Array.isArray(body?.data) && typeof body?.meta?.total === 'number',
   });
   return body;
 }
