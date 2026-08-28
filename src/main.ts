@@ -1,9 +1,10 @@
 import { NestFactory } from '@nestjs/core';
-import { RequestMethod, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { EnvironmentVariables } from './config/env.validation';
+import { applyGlobalPrefix } from './global-prefix';
 import { correlationIdMiddleware } from './observability/correlation-id.middleware';
 import { StructuredLoggerService } from './observability/structured-logger.service';
 import { routineEventsRmqOptions } from './routines/events/rabbitmq.constants';
@@ -49,14 +50,7 @@ async function bootstrap(): Promise<void> {
   );
   await app.startAllMicroservices();
 
-  app.setGlobalPrefix(`${apiPrefix}/${apiVersion}`, {
-    exclude: [
-      { path: 'health/live', method: RequestMethod.GET },
-      { path: 'health/ready', method: RequestMethod.GET },
-      { path: 'auth', method: RequestMethod.ALL },
-      { path: 'auth/*path', method: RequestMethod.ALL },
-    ],
-  });
+  applyGlobalPrefix(app, apiPrefix, apiVersion);
   app.enableCors();
   app.enableShutdownHooks();
   app.useGlobalPipes(

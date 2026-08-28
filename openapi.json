@@ -1,7 +1,7 @@
 {
   "openapi": "3.0.0",
   "paths": {
-    "/": {
+    "/api/v1": {
       "get": {
         "operationId": "AppController_getHello",
         "parameters": [],
@@ -358,7 +358,7 @@
         ]
       }
     },
-    "/users/me": {
+    "/api/v1/users/me": {
       "get": {
         "operationId": "UsersController_me",
         "parameters": [],
@@ -379,7 +379,7 @@
         ]
       }
     },
-    "/users": {
+    "/api/v1/users": {
       "get": {
         "operationId": "UsersController_findAll",
         "parameters": [],
@@ -403,7 +403,7 @@
         ]
       }
     },
-    "/users/{id}": {
+    "/api/v1/users/{id}": {
       "get": {
         "operationId": "UsersController_findOne",
         "parameters": [
@@ -492,7 +492,7 @@
         ]
       }
     },
-    "/tasks": {
+    "/api/v1/tasks": {
       "post": {
         "operationId": "TasksController_create",
         "parameters": [],
@@ -588,7 +588,7 @@
         ]
       }
     },
-    "/tasks/{id}": {
+    "/api/v1/tasks/{id}": {
       "get": {
         "operationId": "TasksController_findOne",
         "parameters": [
@@ -677,7 +677,7 @@
         ]
       }
     },
-    "/routines": {
+    "/api/v1/routines": {
       "post": {
         "operationId": "RoutinesController_create",
         "parameters": [],
@@ -759,7 +759,7 @@
         ]
       }
     },
-    "/routines/{id}": {
+    "/api/v1/routines/{id}": {
       "get": {
         "operationId": "RoutinesController_findOne",
         "parameters": [
@@ -848,7 +848,7 @@
         ]
       }
     },
-    "/routines/{routineId}/tasks": {
+    "/api/v1/routines/{routineId}/tasks": {
       "post": {
         "operationId": "RoutinesController_addTask",
         "parameters": [
@@ -919,7 +919,7 @@
         ]
       }
     },
-    "/routines/{routineId}/tasks/reorder": {
+    "/api/v1/routines/{routineId}/tasks/reorder": {
       "patch": {
         "operationId": "RoutinesController_reorderTasks",
         "parameters": [
@@ -962,7 +962,7 @@
         ]
       }
     },
-    "/routines/{routineId}/tasks/{taskId}": {
+    "/api/v1/routines/{routineId}/tasks/{taskId}": {
       "patch": {
         "operationId": "RoutinesController_updateTask",
         "parameters": [
@@ -1039,7 +1039,7 @@
         ]
       }
     },
-    "/practice-sessions": {
+    "/api/v1/practice-sessions": {
       "post": {
         "operationId": "PracticeSessionsController_create",
         "parameters": [],
@@ -1139,7 +1139,7 @@
         ]
       }
     },
-    "/practice-sessions/{sessionId}": {
+    "/api/v1/practice-sessions/{sessionId}": {
       "get": {
         "operationId": "PracticeSessionsController_findOne",
         "parameters": [
@@ -1169,7 +1169,7 @@
         ]
       }
     },
-    "/practice-sessions/{sessionId}/recordings": {
+    "/api/v1/practice-sessions/{sessionId}/recordings": {
       "post": {
         "operationId": "PracticeSessionsController_uploadRecording",
         "parameters": [
@@ -1230,7 +1230,7 @@
         ]
       }
     },
-    "/recordings/{recordingId}/download-url": {
+    "/api/v1/recordings/{recordingId}/download-url": {
       "get": {
         "operationId": "RecordingsController_getDownloadUrl",
         "parameters": [
@@ -1260,7 +1260,7 @@
         ]
       }
     },
-    "/recordings/{recordingId}": {
+    "/api/v1/recordings/{recordingId}": {
       "delete": {
         "operationId": "RecordingsController_remove",
         "parameters": [
@@ -1283,7 +1283,7 @@
         ]
       }
     },
-    "/ai/practice-planner": {
+    "/api/v1/ai/practice-planner": {
       "post": {
         "operationId": "AiPracticePlannerController_handle",
         "parameters": [],
@@ -1324,7 +1324,7 @@
         ]
       }
     },
-    "/ai/routine-coach": {
+    "/api/v1/ai/routine-coach": {
       "post": {
         "operationId": "AiRoutineCoachController_handle",
         "parameters": [],

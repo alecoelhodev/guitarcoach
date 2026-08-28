@@ -15,6 +15,11 @@ interface PracticeSessionResponseBody {
   updatedAt: string;
 }
 
+interface PaginatedPracticeSessionsResponseBody {
+  data: PracticeSessionResponseBody[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+}
+
 interface RecordingResponseBody {
   id: string;
   userId: string;
@@ -110,9 +115,15 @@ describe('PracticeSessionsController (e2e)', () => {
         .get('/api/v1/practice-sessions')
         .expect(200);
 
-      const body = response.body as PracticeSessionResponseBody[];
-      expect(body).toHaveLength(1);
-      expect(body[0].title).toBe('Session A');
+      const body = response.body as PaginatedPracticeSessionsResponseBody;
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0].title).toBe('Session A');
+      expect(body.meta).toMatchObject({
+        total: 1,
+        page: 1,
+        limit: 20,
+        totalPages: 1,
+      });
     });
 
     it('rejects an unauthenticated request', async () => {
