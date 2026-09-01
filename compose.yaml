@@ -16,6 +16,15 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-guitar_coach}?schema=public
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      # Browser origins allowed to send the session cookie. Required, not defaulted:
+      # a wildcard Access-Control-Allow-Origin makes the browser drop a credentialed
+      # request, so every web client origin has to be named explicitly.
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
+      # Read straight from the environment by Better Auth, not via env.validation.
+      # Its originCheckMiddleware rejects any cookie-bearing non-GET whose Origin
+      # isn't listed here, and it otherwise trusts only BETTER_AUTH_URL's own origin —
+      # so a web origin missing here gets a 403 INVALID_ORIGIN even with CORS passing.
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:?BETTER_AUTH_TRUSTED_ORIGINS is required}
       REDIS_URL: redis://redis:6379
       CACHE_TTL_MS: ${CACHE_TTL_MS:-300000}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672

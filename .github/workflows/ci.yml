@@ -45,6 +45,7 @@ jobs:
           DATABASE_URL: postgres://user:pass@localhost:5432/db
           BETTER_AUTH_SECRET: ci-placeholder-secret-at-least-32-chars-long
           BETTER_AUTH_URL: http://localhost:3000
+          CORS_ORIGINS: http://localhost:8081
           REDIS_URL: redis://localhost:6379
           RABBITMQ_URL: amqp://localhost:5672
           GCP_PROJECT_ID: ci-placeholder
