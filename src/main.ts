@@ -55,10 +55,7 @@ async function bootstrap(): Promise<void> {
   // credentialed cookie when Access-Control-Allow-Origin is `*`, which is what the
   // bare enableCors() default emits.
   app.enableCors({
-    origin: configService
-      .get('CORS_ORIGINS', { infer: true })
-      .split(',')
-      .map((origin) => origin.trim()),
+    origin: configService.get('CORS_ORIGINS', { infer: true }),
     credentials: true,
   });
   app.enableShutdownHooks();

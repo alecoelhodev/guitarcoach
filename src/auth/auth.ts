@@ -109,9 +109,15 @@ export function createAuth(
   prisma: PrismaService,
   redisRateLimitStorage: RedisRateLimitStorage,
   securityEventLogger: SecurityEventLogger,
+  trustedOrigins: string[],
 ) {
   return betterAuth({
     basePath: '/auth',
+    // The same CORS_ORIGINS list main.ts hands to enableCors(). Better Auth's
+    // originCheckMiddleware otherwise trusts only BETTER_AUTH_URL's own origin
+    // and answers 403 INVALID_ORIGIN to a cookie-bearing non-GET from anywhere
+    // else — passing CORS but failing the request it was meant to allow.
+    trustedOrigins,
     database: prismaAdapter(prisma, { provider: 'postgresql' }),
     advanced: {
       database: { generateId: false },

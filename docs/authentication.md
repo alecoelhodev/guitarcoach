@@ -29,6 +29,28 @@ curl -i -b cookies.txt http://localhost:3000/api/v1/users/me
 
 `sendVerificationEmail`/`sendResetPassword` (`src/auth/email.ts`) currently just `console.log` the link instead of sending a real email — check the server output for the verification link after signing up.
 
+## Browser clients & CORS
+
+A web client on an origin other than the API's own has to clear **two** independent checks before a cookie-bearing request succeeds, and both read the same `CORS_ORIGINS` variable:
+
+1. **CORS** — `main.ts` calls `app.enableCors({ origin, credentials: true })`. `credentials: true` is what lets the browser send and store the session cookie at all, and it rules out a wildcard origin: browsers drop a credentialed response whose `Access-Control-Allow-Origin` is `*`, which is exactly what a bare `enableCors()` emits. So every origin has to be named.
+2. **Better Auth's own origin check** — its `originCheckMiddleware` rejects any cookie-bearing non-GET whose `Origin` isn't trusted, answering `403 INVALID_ORIGIN`. Left alone it trusts only `BETTER_AUTH_URL`'s own origin, so a client that passes CORS still fails the actual `POST /auth/sign-in/email`.
+
+`CORS_ORIGINS` is parsed once in `src/config/env.validation.ts` into a trimmed list, which `main.ts` hands to `enableCors()` and `app.module.ts` hands to `createAuth(..., trustedOrigins)`. One variable feeds both, so the two checks can't drift apart — an earlier version of this used a separate `BETTER_AUTH_TRUSTED_ORIGINS` variable, and the failure mode when the two disagreed was a passing preflight followed by a 403 on the request it was meant to allow.
+
+```bash
+# Multiple origins: comma-separated. Surrounding whitespace and empty entries
+# are stripped, so this and "http://localhost:8081,https://app.example.com"
+# are equivalent.
+CORS_ORIGINS=http://localhost:8081, https://app.example.com
+```
+
+The app fails to boot if `CORS_ORIGINS` is missing or lists no usable origin — including in production, where it has to be set on the Cloud Run service (see [Continuous deployment](deployment.md)).
+
+Native clients (iOS/Android, curl) send no `Origin` header and are subject to neither check.
+
+**One known limitation for a cross-site deployment:** Better Auth's session cookie defaults to `SameSite=Lax`, which the browser honors independently of CORS. A frontend served from a different registrable domain than the API will sign in successfully and then have the browser refuse to store or send the cookie. Local dev doesn't hit this — `localhost:8081` → `localhost:3000` is same-site, since `SameSite` ignores the port. Serving the web client from the API's own domain avoids it; otherwise the cookie needs `advanced.defaultCookieAttributes: { sameSite: 'none', secure: true }` in `createAuth` (not configured today).
+
 ## Roles & admin access
 
 Two roles: `user` (default for every new sign-up) and `admin`, enforced via the `@Roles(['admin'])` decorator from `@thallesp/nestjs-better-auth` on `UsersController`'s and `TasksController`'s mutating/listing routes. Backed by Better Auth's `admin` plugin (`src/auth/auth.ts`).
