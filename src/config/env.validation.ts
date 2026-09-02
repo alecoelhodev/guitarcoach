@@ -9,6 +9,23 @@ export const envSchema = z.object({
   TEST_DATABASE_URL: z.url().optional(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
+  // Browser origins allowed to send the session cookie, comma-separated. Required
+  // because CORS credentials cannot be combined with a wildcard origin, so every web
+  // client has to be named. Native clients don't use CORS and are unaffected.
+  // Parsed here rather than at each use site so `enableCors()` and Better Auth's
+  // `trustedOrigins` consume the exact same list — a value trimmed by one and not
+  // the other passes preflight and then 403s the real request.
+  CORS_ORIGINS: z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    )
+    .refine((origins) => origins.length > 0, {
+      message: 'must list at least one origin',
+    }),
   REDIS_URL: z.url(),
   RABBITMQ_URL: z.url(),
   CACHE_TTL_MS: z.coerce

@@ -3,6 +3,8 @@ import { validate } from './env.validation';
 const DATABASE_URL = 'postgresql://user:pass@localhost:5432/db?schema=public';
 const BETTER_AUTH_SECRET = 'a'.repeat(32);
 const BETTER_AUTH_URL = 'http://localhost:3000';
+const CORS_ORIGINS = 'http://localhost:8081';
+const CORS_ORIGINS_PARSED = ['http://localhost:8081'];
 const REDIS_URL = 'redis://localhost:6379';
 const RABBITMQ_URL = 'amqp://user:pass@localhost:5672';
 const GCP_PROJECT_ID = 'guitar-coach-dev';
@@ -20,6 +22,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -36,6 +39,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS: CORS_ORIGINS_PARSED,
       REDIS_URL,
       RABBITMQ_URL,
       CACHE_TTL_MS: 300_000,
@@ -60,6 +64,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -75,6 +80,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -89,6 +95,7 @@ describe('validate', () => {
         NODE_ENV: 'development',
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -104,6 +111,7 @@ describe('validate', () => {
         DATABASE_URL: 'not-a-url',
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -118,6 +126,7 @@ describe('validate', () => {
         NODE_ENV: 'development',
         DATABASE_URL,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -133,6 +142,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET: 'too-short',
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -148,12 +158,73 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL: 'not-a-url',
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
         GCS_RECORDINGS_BUCKET,
       }),
     ).toThrow('Environment validation failed');
+  });
+
+  it('fails when CORS_ORIGINS is missing', () => {
+    // Required rather than defaulted: enableCors() must never fall back to a wildcard
+    // origin, which browsers refuse to pair with credentialed cookies.
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+        OPENAI_API_KEY,
+        OPENAI_MODEL,
+      }),
+    ).toThrow('CORS_ORIGINS');
+  });
+
+  it('parses CORS_ORIGINS into a trimmed list, dropping empty entries', () => {
+    // Better Auth's own comma-split does no trimming, so the list has to arrive
+    // already normalized for enableCors() and trustedOrigins to agree on it.
+    const result = validate({
+      NODE_ENV: 'development',
+      DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      CORS_ORIGINS: 'http://localhost:8081, https://app.example.com,',
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+    });
+
+    expect(result.CORS_ORIGINS).toEqual([
+      'http://localhost:8081',
+      'https://app.example.com',
+    ]);
+  });
+
+  it('fails when CORS_ORIGINS lists no usable origin', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'development',
+        DATABASE_URL,
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        CORS_ORIGINS: ' , ',
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+        OPENAI_API_KEY,
+        OPENAI_MODEL,
+      }),
+    ).toThrow('CORS_ORIGINS');
   });
 
   it('fails when REDIS_URL is missing', () => {
@@ -163,6 +234,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         GCP_PROJECT_ID,
         GCS_RECORDINGS_BUCKET,
       }),
@@ -176,6 +248,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL: 'not-a-url',
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -191,6 +264,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         GCP_PROJECT_ID,
         GCS_RECORDINGS_BUCKET,
@@ -205,6 +279,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL: 'not-a-url',
         GCP_PROJECT_ID,
@@ -220,6 +295,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCS_RECORDINGS_BUCKET,
@@ -234,6 +310,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -248,6 +325,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -264,6 +342,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -279,6 +358,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -298,6 +378,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -320,6 +401,7 @@ describe('validate', () => {
       TEST_DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -339,6 +421,7 @@ describe('validate', () => {
         TEST_DATABASE_URL: 'not-a-url',
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -353,6 +436,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -372,6 +456,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -389,6 +474,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -408,6 +494,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -424,6 +511,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -439,6 +527,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -456,6 +545,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -474,6 +564,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -493,6 +584,7 @@ describe('validate', () => {
         DATABASE_URL,
         BETTER_AUTH_SECRET,
         BETTER_AUTH_URL,
+        CORS_ORIGINS,
         REDIS_URL,
         RABBITMQ_URL,
         GCP_PROJECT_ID,
@@ -508,6 +600,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,
@@ -526,6 +619,7 @@ describe('validate', () => {
       DATABASE_URL,
       BETTER_AUTH_SECRET,
       BETTER_AUTH_URL,
+      CORS_ORIGINS,
       REDIS_URL,
       RABBITMQ_URL,
       GCP_PROJECT_ID,

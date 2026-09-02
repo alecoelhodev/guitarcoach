@@ -51,7 +51,13 @@ async function bootstrap(): Promise<void> {
   await app.startAllMicroservices();
 
   applyGlobalPrefix(app, apiPrefix, apiVersion);
-  app.enableCors();
+  // An explicit allowlist, not a wildcard: browsers refuse to send or store a
+  // credentialed cookie when Access-Control-Allow-Origin is `*`, which is what the
+  // bare enableCors() default emits.
+  app.enableCors({
+    origin: configService.get('CORS_ORIGINS', { infer: true }),
+    credentials: true,
+  });
   app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({

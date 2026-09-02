@@ -58,13 +58,24 @@ import { UsersModule } from './users/users.module';
       }),
     }),
     AuthModule.forRootAsync({
-      inject: [PrismaService, RedisRateLimitStorage, SecurityEventLogger],
+      inject: [
+        PrismaService,
+        RedisRateLimitStorage,
+        SecurityEventLogger,
+        ConfigService,
+      ],
       useFactory: (
         prisma: PrismaService,
         redisRateLimitStorage: RedisRateLimitStorage,
         securityEventLogger: SecurityEventLogger,
+        configService: ConfigService<EnvironmentVariables, true>,
       ) => ({
-        auth: createAuth(prisma, redisRateLimitStorage, securityEventLogger),
+        auth: createAuth(
+          prisma,
+          redisRateLimitStorage,
+          securityEventLogger,
+          configService.get('CORS_ORIGINS', { infer: true }),
+        ),
       }),
     }),
     HealthModule,

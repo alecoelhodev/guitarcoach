@@ -475,6 +475,9 @@ const auth = createAuth(
   prisma,
   new RedisRateLimitStorage(process.env.REDIS_URL),
   new SecurityEventLogger(),
+  // No trusted origins to add: the seed calls auth.api directly rather than
+  // over HTTP, so no request ever carries an Origin header to check.
+  [],
 );
 
 async function seedUser(

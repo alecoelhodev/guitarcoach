@@ -102,6 +102,7 @@ jobs:
             GCP_PROJECT_ID=${{ env.PROJECT_ID }}
             GCS_RECORDINGS_BUCKET=practice-sessions-2026
             BETTER_AUTH_URL=https://guitarcoach-685026468764.us-east1.run.app
+            CORS_ORIGINS=https://guitarcoach-685026468764.us-east1.run.app
             OPENAI_MODEL=gpt-4.1
             LOG_LEVEL=log
             METRICS_EXPORT_ENABLED=true
