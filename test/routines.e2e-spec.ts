@@ -10,6 +10,8 @@ interface RoutineResponseBody {
   title: string;
   status: string;
   notes: string | null;
+  taskCount: number;
+  totalTargetDurationMinutes: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -345,6 +347,118 @@ describe('RoutinesController (e2e)', () => {
       await asUser(user.id)
         .delete(`/api/v1/routines/${createdBody.id}`)
         .expect(409);
+    });
+  });
+
+  // These two are derived per request rather than stored, and the client renders
+  // "4 tasks · 45 min" straight from them, so they are worth pinning against a
+  // real database rather than only against a mocked Prisma.
+  describe('derived task totals', () => {
+    it('reports zero totals for a routine with no tasks', async () => {
+      const user = await seedUser();
+      const created = await createRoutine(user.id).expect(201);
+      const createdBody = created.body as RoutineResponseBody;
+
+      expect(createdBody).toMatchObject({
+        taskCount: 0,
+        totalTargetDurationMinutes: 0,
+      });
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/routines/${createdBody.id}`)
+        .expect(200);
+
+      expect(response.body as RoutineResponseBody).toMatchObject({
+        taskCount: 0,
+        totalTargetDurationMinutes: 0,
+      });
+    });
+
+    it('counts a task with no target duration but adds nothing to the total', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const timed = await seedTask('Timed');
+      const untimed = await seedTask('Untimed');
+
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: timed.id, targetDurationMinutes: 20 })
+        .expect(201);
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: untimed.id })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/routines/${routine.id}`)
+        .expect(200);
+
+      expect(response.body as RoutineResponseBody).toMatchObject({
+        taskCount: 2,
+        totalTargetDurationMinutes: 20,
+      });
+    });
+
+    it('folds the totals for every routine in a listed page', async () => {
+      const user = await seedUser();
+      const withTasks = (
+        await createRoutine(user.id, { title: 'With tasks' }).expect(201)
+      ).body as RoutineResponseBody;
+      const empty = (
+        await createRoutine(user.id, { title: 'Empty' }).expect(201)
+      ).body as RoutineResponseBody;
+      const taskA = await seedTask('Task A');
+      const taskB = await seedTask('Task B');
+
+      await asUser(user.id)
+        .post(`/api/v1/routines/${withTasks.id}/tasks`)
+        .send({ taskId: taskA.id, targetDurationMinutes: 25 })
+        .expect(201);
+      await asUser(user.id)
+        .post(`/api/v1/routines/${withTasks.id}/tasks`)
+        .send({ taskId: taskB.id, targetDurationMinutes: 20 })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .get('/api/v1/routines')
+        .expect(200);
+
+      const body = response.body as PaginatedRoutinesResponseBody;
+      const byId = new Map(body.data.map((routine) => [routine.id, routine]));
+
+      expect(byId.get(withTasks.id)).toMatchObject({
+        taskCount: 2,
+        totalTargetDurationMinutes: 45,
+      });
+      expect(byId.get(empty.id)).toMatchObject({
+        taskCount: 0,
+        totalTargetDurationMinutes: 0,
+      });
+    });
+
+    it('reflects a task removal in the totals', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id, targetDurationMinutes: 15 })
+        .expect(201);
+      await asUser(user.id)
+        .delete(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .expect(204);
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/routines/${routine.id}`)
+        .expect(200);
+
+      expect(response.body as RoutineResponseBody).toMatchObject({
+        taskCount: 0,
+        totalTargetDurationMinutes: 0,
+      });
     });
   });
 

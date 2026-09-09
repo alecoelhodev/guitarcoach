@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
-import { Routine, RoutineTask } from '../generated/prisma/client';
-import { PaginatedRoutinesResponseDto } from './dto/routine-response.dto';
+import { RoutineTask } from '../generated/prisma/client';
+import {
+  PaginatedRoutinesResponseDto,
+  RoutineResponseDto,
+} from './dto/routine-response.dto';
 import { RoutinesController } from './routines.controller';
 import { RoutinesService } from './routines.service';
 
@@ -13,13 +16,19 @@ function buildSession(): UserSession {
   return { user: { id: USER_ID } } as UserSession;
 }
 
-function buildRoutine(overrides: Partial<Routine> = {}): Routine {
+// The service maps the Prisma row into this shape, so the controller only ever
+// sees a RoutineResponseDto — including the two derived totals.
+function buildRoutine(
+  overrides: Partial<RoutineResponseDto> = {},
+): RoutineResponseDto {
   return {
     id: ROUTINE_ID,
     userId: USER_ID,
     title: 'Daily warm-up',
     status: 'active',
     notes: null,
+    taskCount: 0,
+    totalTargetDurationMinutes: 0,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
