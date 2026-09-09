@@ -9,6 +9,7 @@ import { Prisma, Routine, RoutineTask, Task } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisLockService } from '../redis/redis-lock.service';
 import { RoutineCreatedProducer } from './events/routine-created.producer';
+import { RoutineResponseDto } from './dto/routine-response.dto';
 import { RoutinesService } from './routines.service';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
@@ -34,6 +35,35 @@ function buildRoutine(overrides: Partial<Routine> = {}): Routine {
     ...overrides,
   };
 }
+
+// findAll/findById/update now select each routine task's duration column so the
+// service can fold the two derived totals; these two helpers keep the mocked row
+// and the expected response in step without either mirroring the other's maths.
+function buildRoutineRow(
+  overrides: Partial<Routine> = {},
+  taskDurations: (number | null)[] = [],
+): Routine & { routineTasks: { targetDurationMinutes: number | null }[] } {
+  return {
+    ...buildRoutine(overrides),
+    routineTasks: taskDurations.map((targetDurationMinutes) => ({
+      targetDurationMinutes,
+    })),
+  };
+}
+
+function buildRoutineResponse(
+  overrides: Partial<Routine> = {},
+  totals: { taskCount: number; totalTargetDurationMinutes: number } = {
+    taskCount: 0,
+    totalTargetDurationMinutes: 0,
+  },
+): RoutineResponseDto {
+  return { ...buildRoutine(overrides), ...totals };
+}
+
+const ROUTINE_TASK_TOTALS_INCLUDE = {
+  routineTasks: { select: { targetDurationMinutes: true } },
+};
 
 function buildRoutineTask(overrides: Partial<RoutineTask> = {}): RoutineTask {
   return {
@@ -123,7 +153,7 @@ describe('RoutinesService', () => {
     // ownership check (findById -> prisma.routine.findFirst); default it to
     // "found" so each describe block only overrides it when testing the
     // not-found/not-owned path.
-    prisma.routine.findFirst.mockResolvedValue(buildRoutine());
+    prisma.routine.findFirst.mockResolvedValue(buildRoutineRow());
 
     redisLock = {
       acquire: jest.fn(),
@@ -157,7 +187,9 @@ describe('RoutinesService', () => {
       expect(prisma.routine.create).toHaveBeenCalledWith({
         data: { title: 'Daily warm-up', userId: USER_ID },
       });
-      expect(routine).toEqual(created);
+      // A routine cannot be created with tasks, so the totals are known
+      // without a second query.
+      expect(routine).toEqual(buildRoutineResponse());
     });
 
     it('publishes a routine.created event after a successful create', async () => {
@@ -178,14 +210,16 @@ describe('RoutinesService', () => {
 
       await expect(
         service.create(USER_ID, { title: 'Daily warm-up' }),
-      ).resolves.toEqual(created);
+      ).resolves.toEqual(buildRoutineResponse());
     });
   });
 
   describe('findAll', () => {
     it('scopes results to the owning user with default pagination', async () => {
-      const routines = [buildRoutine(), buildRoutine({ id: 'other-id' })];
-      prisma.routine.findMany.mockResolvedValue(routines);
+      prisma.routine.findMany.mockResolvedValue([
+        buildRoutineRow(),
+        buildRoutineRow({ id: 'other-id' }),
+      ]);
       prisma.routine.count.mockResolvedValue(2);
 
       const result = await service.findAll(USER_ID, {});
@@ -195,12 +229,16 @@ describe('RoutinesService', () => {
         skip: 0,
         take: 20,
         orderBy: { createdAt: 'desc' },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
       });
       expect(prisma.routine.count).toHaveBeenCalledWith({
         where: { userId: USER_ID },
       });
       expect(result).toEqual({
-        data: routines,
+        data: [
+          buildRoutineResponse(),
+          buildRoutineResponse({ id: 'other-id' }),
+        ],
         meta: { total: 2, page: 1, limit: 20, totalPages: 1 },
       });
     });
@@ -221,6 +259,7 @@ describe('RoutinesService', () => {
         skip: 5,
         take: 5,
         orderBy: { createdAt: 'desc' },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
       });
       expect(prisma.routine.count).toHaveBeenCalledWith({
         where: expectedWhere,
@@ -236,14 +275,14 @@ describe('RoutinesService', () => {
 
   describe('findById', () => {
     it('returns the matching routine owned by the user', async () => {
-      const created = buildRoutine();
-      prisma.routine.findFirst.mockResolvedValue(created);
+      prisma.routine.findFirst.mockResolvedValue(buildRoutineRow());
 
-      await expect(service.findById(USER_ID, created.id)).resolves.toEqual(
-        created,
+      await expect(service.findById(USER_ID, ROUTINE_ID)).resolves.toEqual(
+        buildRoutineResponse(),
       );
       expect(prisma.routine.findFirst).toHaveBeenCalledWith({
-        where: { id: created.id, userId: USER_ID },
+        where: { id: ROUTINE_ID, userId: USER_ID },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
       });
     });
 
@@ -253,6 +292,71 @@ describe('RoutinesService', () => {
       await expect(service.findById(USER_ID, 'unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  // The client renders "4 tasks · 45 min" straight from these two figures, so
+  // the null handling is contractual: targetDurationMinutes is nullable and a
+  // task without one still counts towards taskCount.
+  describe('derived task totals', () => {
+    it('reports zero totals for a routine with no tasks', async () => {
+      prisma.routine.findFirst.mockResolvedValue(buildRoutineRow({}, []));
+
+      await expect(
+        service.findById(USER_ID, ROUTINE_ID),
+      ).resolves.toMatchObject({ taskCount: 0, totalTargetDurationMinutes: 0 });
+    });
+
+    it('counts tasks whose target duration is null, and sums them as zero', async () => {
+      prisma.routine.findFirst.mockResolvedValue(
+        buildRoutineRow({}, [null, null, null]),
+      );
+
+      await expect(
+        service.findById(USER_ID, ROUTINE_ID),
+      ).resolves.toMatchObject({ taskCount: 3, totalTargetDurationMinutes: 0 });
+    });
+
+    it('sums the durations that are set while counting every task', async () => {
+      prisma.routine.findFirst.mockResolvedValue(
+        buildRoutineRow({}, [20, null, 15, 10]),
+      );
+
+      await expect(
+        service.findById(USER_ID, ROUTINE_ID),
+      ).resolves.toMatchObject({
+        taskCount: 4,
+        totalTargetDurationMinutes: 45,
+      });
+    });
+
+    it('drops the nested routineTasks rather than leaking them to the client', async () => {
+      prisma.routine.findFirst.mockResolvedValue(buildRoutineRow({}, [20]));
+
+      const routine = await service.findById(USER_ID, ROUTINE_ID);
+
+      expect(routine).not.toHaveProperty('routineTasks');
+    });
+
+    it('folds the totals for every routine in a page', async () => {
+      prisma.routine.findMany.mockResolvedValue([
+        buildRoutineRow({ id: 'r1' }, [20, 25]),
+        buildRoutineRow({ id: 'r2' }, []),
+      ]);
+      prisma.routine.count.mockResolvedValue(2);
+
+      const { data } = await service.findAll(USER_ID, {});
+
+      expect(data).toEqual([
+        buildRoutineResponse(
+          { id: 'r1' },
+          { taskCount: 2, totalTargetDurationMinutes: 45 },
+        ),
+        buildRoutineResponse(
+          { id: 'r2' },
+          { taskCount: 0, totalTargetDurationMinutes: 0 },
+        ),
+      ]);
     });
   });
 
@@ -288,19 +392,24 @@ describe('RoutinesService', () => {
 
   describe('update', () => {
     it('updates only a routine owned by the user', async () => {
-      const updated = buildRoutine({ status: 'archived' });
       prisma.routine.updateMany.mockResolvedValue({ count: 1 });
-      prisma.routine.findUniqueOrThrow.mockResolvedValue(updated);
+      prisma.routine.findUniqueOrThrow.mockResolvedValue(
+        buildRoutineRow({ status: 'archived' }),
+      );
 
-      const routine = await service.update(USER_ID, updated.id, {
+      const routine = await service.update(USER_ID, ROUTINE_ID, {
         status: 'archived',
       });
 
       expect(prisma.routine.updateMany).toHaveBeenCalledWith({
-        where: { id: updated.id, userId: USER_ID },
+        where: { id: ROUTINE_ID, userId: USER_ID },
         data: { status: 'archived' },
       });
-      expect(routine).toEqual(updated);
+      expect(prisma.routine.findUniqueOrThrow).toHaveBeenCalledWith({
+        where: { id: ROUTINE_ID },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
+      });
+      expect(routine).toEqual(buildRoutineResponse({ status: 'archived' }));
     });
 
     it('throws NotFoundException when no routine matches for the user', async () => {
@@ -351,6 +460,7 @@ describe('RoutinesService', () => {
 
       expect(prisma.routine.findFirst).toHaveBeenCalledWith({
         where: { id: ROUTINE_ID, userId: USER_ID },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
       });
       expect(prisma.routineTask.findMany).toHaveBeenCalledWith({
         where: { routineId: ROUTINE_ID },
@@ -390,6 +500,7 @@ describe('RoutinesService', () => {
 
       expect(prisma.routine.findFirst).toHaveBeenCalledWith({
         where: { id: ROUTINE_ID, userId: USER_ID },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
       });
       expect(prisma.routineTask.findFirst).toHaveBeenCalledWith({
         where: { routineId: ROUTINE_ID },
@@ -481,6 +592,7 @@ describe('RoutinesService', () => {
 
       expect(prisma.routine.findFirst).toHaveBeenCalledWith({
         where: { id: ROUTINE_ID, userId: USER_ID },
+        include: ROUTINE_TASK_TOTALS_INCLUDE,
       });
       expect(prisma.routineTask.update).toHaveBeenCalledWith({
         where: { routineId_taskId: { routineId: ROUTINE_ID, taskId: TASK_ID } },

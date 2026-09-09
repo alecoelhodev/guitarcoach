@@ -41,6 +41,35 @@ export type RoutineWithTasks = Prisma.RoutineGetPayload<{
   include: { routineTasks: { include: { task: true } } };
 }>;
 
+// The client shows "4 tasks · 45 min" on every routine card, so the two figures
+// travel with the routine rather than costing a request per card. Prisma's
+// relation `_count` could supply the count but has no relation `_sum`, so one
+// `include` of just the duration column covers both in a single round trip.
+const ROUTINE_TASK_TOTALS = {
+  routineTasks: { select: { targetDurationMinutes: true } },
+} as const satisfies Prisma.RoutineInclude;
+
+type RoutineWithTaskTotals = Prisma.RoutineGetPayload<{
+  include: typeof ROUTINE_TASK_TOTALS;
+}>;
+
+// These DTOs are types only — there is no ClassSerializerInterceptor — so the
+// nested `routineTasks` would otherwise travel to the client as dead weight.
+function toRoutineResponse({
+  routineTasks,
+  ...routine
+}: RoutineWithTaskTotals): RoutineResponseDto {
+  return {
+    ...routine,
+    taskCount: routineTasks.length,
+    totalTargetDurationMinutes: routineTasks.reduce(
+      (total, { targetDurationMinutes }) =>
+        total + (targetDurationMinutes ?? 0),
+      0,
+    ),
+  };
+}
+
 function isPrismaErrorCode(
   error: unknown,
   code: string,
@@ -83,7 +112,7 @@ export class RoutinesService {
       this.logger.warn('Failed to publish routine.created event', error);
     }
 
-    return routine;
+    return { ...routine, taskCount: 0, totalTargetDurationMinutes: 0 };
   }
 
   async findAll(
@@ -104,12 +133,13 @@ export class RoutinesService {
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        include: ROUTINE_TASK_TOTALS,
       }),
       this.prisma.routine.count({ where }),
     ]);
 
     return {
-      data,
+      data: data.map(toRoutineResponse),
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -117,13 +147,14 @@ export class RoutinesService {
   async findById(userId: string, id: string): Promise<RoutineResponseDto> {
     const routine = await this.prisma.routine.findFirst({
       where: { id, userId },
+      include: ROUTINE_TASK_TOTALS,
     });
 
     if (!routine) {
       throw notFound(id);
     }
 
-    return routine;
+    return toRoutineResponse(routine);
   }
 
   findRecent(userId: string, days: number): Promise<RoutineWithTasks[]> {
@@ -152,7 +183,12 @@ export class RoutinesService {
       throw notFound(id);
     }
 
-    return this.prisma.routine.findUniqueOrThrow({ where: { id } });
+    const routine = await this.prisma.routine.findUniqueOrThrow({
+      where: { id },
+      include: ROUTINE_TASK_TOTALS,
+    });
+
+    return toRoutineResponse(routine);
   }
 
   async remove(userId: string, id: string): Promise<void> {
