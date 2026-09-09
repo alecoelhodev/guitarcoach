@@ -1681,6 +1681,12 @@
           "title": {
             "type": "string"
           },
+          "taskCount": {
+            "type": "number"
+          },
+          "totalTargetDurationMinutes": {
+            "type": "number"
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -1695,6 +1701,8 @@
           "id",
           "userId",
           "title",
+          "taskCount",
+          "totalTargetDurationMinutes",
           "createdAt",
           "updatedAt"
         ]
