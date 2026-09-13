@@ -1,0 +1,76 @@
+# SonarQube Cloud static analysis + test coverage.
+#
+# Deliberately a separate, independent workflow (no `needs:` on ci.yml's
+# build-and-test job) so it runs in parallel with the existing PR checks
+# instead of lengthening that pipeline — same rationale as security.yml and
+# k6-performance.yml.
+#
+# Like security.yml this also runs on push to main: Sonar needs main-branch
+# analyses to establish the baseline that pull-request analyses are compared
+# against, so a PR-only trigger would leave "new code" undefined.
+#
+# Free on this repo: SonarQube Cloud's OSS plan covers unlimited public
+# projects with unlimited branch and pull-request analysis. The only setup is
+# the SONAR_TOKEN secret — see docs/code-quality.md.
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  sonarqube:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # GitHub withholds repository secrets from workflows triggered by a fork,
+    # and from Dependabot pull requests (same-repo, but a restricted token).
+    # The scan action has no soft-fail mode, so without this guard those PRs
+    # fail hard on a missing SONAR_TOKEN. Skipping is the honest signal: they
+    # get no Sonar check, and the analysis lands on the post-merge main run.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.head.repo.fork == false &&
+      github.actor != 'dependabot[bot]')
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+        with:
+          # Full history: the scanner reads SCM blame to attribute "new code",
+          # which is what the quality gate is measured against.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        # src/generated/prisma is gitignored and imported by every service, so
+        # the specs cannot compile without this.
+        run: npx prisma generate
+
+      - name: Run unit tests with coverage
+        # Writes coverage/lcov.info, which sonar-project.properties points at.
+        # Must run before the scan, and from the repo root so the paths inside
+        # the report stay repo-root-relative.
+        run: npm run test:cov
+
+      - name: SonarQube scan
+        # v8 verifies the Scanner CLI's OpenPGP signature by default; ubuntu
+        # -latest ships the gpg/dirmngr it needs. If that import ever fails the
+        # fix is installing dirmngr, not skipSignatureVerification.
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          # SONAR_HOST_URL is not set on purpose: Cloud does not use it.
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

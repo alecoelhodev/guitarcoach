@@ -21,7 +21,7 @@ const logger = new Logger('CreateRoutineTool');
 // enforces no upper limit -- these are the "application limits" the spec
 // requires deterministic code (not the LLM) to hold the line on.
 export const CreateRoutineTaskArgSchema = z.object({
-  taskId: z.string().uuid(),
+  taskId: z.uuid(),
   durationMinutes: z.number().int().min(1).max(MAX_TASK_DURATION_MINUTES),
   order: z.number().int().min(1),
 });

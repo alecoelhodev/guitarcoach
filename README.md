@@ -22,6 +22,8 @@ Backend API for Guitar Coach, built with [NestJS](https://nestjs.com/).
 - [Weekly routine cleanup job](#weekly-routine-cleanup-job)
 - [Continuous deployment](#continuous-deployment)
 - [Performance testing](#performance-testing)
+- [Secret scanning](#secret-scanning)
+- [Code quality](#code-quality)
 - [Tradeoffs](#tradeoffs)
 - [Architecture decisions](#architecture-decisions)
 - [Resources](#resources)
@@ -69,6 +71,8 @@ This file covers architecture, data model, and local setup. Full endpoint walkth
 - [Continuous deployment](docs/deployment.md) — CI/CD pipeline, one-time GCP setup, rollback
 - [API contract](docs/api-contract.md) — the committed `openapi.json`, response-DTO conventions, and how a frontend stays in sync
 - [Performance testing](docs/performance-testing.md) — k6 smoke/load tests for the practice-sessions create/list/get workflows
+- [Secret scanning](docs/secret-scanning.md) — the pre-commit + CI credential scan, its config, and the baseline
+- [Code quality](docs/code-quality.md) — SonarQube Cloud analysis, the SonarJS lint rules, coverage, and the quality gate
 - [Architecture decisions](docs/architecture-decisions.md) — rationale behind non-obvious design choices
 - [Monitoring & alerting](docs/monitoring/README.md) — OTel metrics, alert policies, log-based metrics
 
@@ -281,6 +285,8 @@ npx prisma generate     # generates the Prisma Client into src/generated/prisma
 npm run start:dev
 ```
 
+`npm install` also installs the git hooks, including the pre-commit secret scan — see [Secret scanning](#secret-scanning). This works on a fresh clone with no extra setup; the scanner binary is downloaded and checksum-verified automatically.
+
 Note: `PrismaService` connects lazily, so the app boots without a reachable Postgres — but the `users` module queries the database on every request, so you'll need one running (and migrated) before calling any `/users` endpoint. Start one with `docker compose -f compose.yaml -f compose.dev.yaml up postgres`, then apply migrations with `npx prisma migrate deploy` (or point `DATABASE_URL` at any already-migrated Postgres 17-compatible instance).
 
 ### Environment variables
@@ -452,6 +458,22 @@ Full one-time GCP project setup script, database provisioning, gotchas hit getti
 A k6-based smoke test and a small, env-var-configurable load test cover the `practice-sessions` module's create/list/get endpoints — the first performance-testing coverage in the repo, meant as a pattern to copy for other modules. Both scripts self-provision a dedicated test user in `setup()` (sign-in, falling back to sign-up) rather than depending on seeded dev data, tag requests per-workflow for separate latency/error-rate breakdown, and default to `localhost` only, requiring an explicit opt-in to target anything else. A lightweight version also runs in CI on every PR and merge to `main`, against the app's existing deployed (pre-production) Cloud Run environment.
 
 Full setup, env vars, thresholds, and how to read the output: [`docs/performance-testing.md`](docs/performance-testing.md).
+
+## Secret scanning
+
+Every commit is scanned for leaked credentials before it is created, and every PR and push to `main` is scanned again over the full git history in CI. The scanner is [Betterleaks](https://github.com/betterleaks/betterleaks) — MIT, no account, no license key — pinned and SHA-256-verified by `scripts/install-betterleaks.mjs`, which runs from the `prepare` npm script, so a fresh clone needs nothing beyond `npm install`. The pre-commit hook fails closed: if the scanner is missing it blocks the commit rather than skipping the check.
+
+Findings are always reported with `--redact`, so the rule, file and line are shown but the matched value never reaches terminal scrollback or CI logs. CI additionally uploads a SARIF report to the repository's Security tab.
+
+Config, false-positive handling, the baseline, and the `BETTERLEAKS_SKIP` emergency bypass: [`docs/secret-scanning.md`](docs/secret-scanning.md).
+
+## Code quality
+
+Every pull request and push to `main` is analyzed by [SonarQube Cloud](https://www.sonarsource.com/products/sonarcloud/) — bugs, code smells, cognitive complexity, duplication, and test coverage measured from `coverage/lcov.info`. It runs as its own workflow in parallel with the other PR checks, on the free OSS plan, which covers unlimited public projects with unlimited branch and pull-request analysis. The only setup is a `SONAR_TOKEN` secret; there is nothing to install.
+
+The same rule family also runs locally: [`eslint-plugin-sonarjs`](https://github.com/SonarSource/eslint-plugin-sonarjs) is wired into `eslint.config.mjs`, so `npm run lint` (and therefore the pre-commit hook) catches most of what Sonar would report, before a push rather than after. Its rules are `error` severity and do fail the build.
+
+The quality gate is deliberately report-only for now: results are uploaded and visible, but a failing gate does not turn the workflow red. Gate policy, coverage wiring, and how to handle a false positive: [`docs/code-quality.md`](docs/code-quality.md).
 
 ## Tradeoffs
 
