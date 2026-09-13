@@ -86,7 +86,7 @@ flowchart LR
     end
 
     client -->|"REST + session cookie"| http
-    http --> postgres[("Postgres 17")]
+    http --> postgres[("Postgres 17<br/>(Neon when deployed)")]
     http -->|"cache / lock / rate-limit"| redis[("Redis 8")]
     http -->|"emit routine.created"| rabbitmq{{"RabbitMQ 4"}}
     rabbitmq -->|"consume routine.created"| consumer
@@ -97,7 +97,7 @@ flowchart LR
     http -.->|"structured logs + metrics"| observability{{"Cloud Logging / Cloud Monitoring"}}
 ```
 
-- **Postgres** is the system of record for everything (via Prisma). Every other piece of infra below is a supporting concern the app can degrade gracefully without.
+- **Postgres** is the system of record for everything (via Prisma). Every other piece of infra below is a supporting concern the app can degrade gracefully without. Locally it's the `postgres:17-alpine` Compose container; in deployed environments it's [Neon](https://neon.com) serverless Postgres on its free plan, reached over a public TLS endpoint — the app code is identical either way, since `PrismaService` only ever reads `DATABASE_URL`. See [Continuous deployment](docs/deployment.md#provisioning-the-database-neon).
 - **Redis** backs three independent concerns, each with its own key namespace: an HTTP response cache for `GET /tasks*` (`TasksService`, via `@nestjs/cache-manager` + Keyv), a distributed lock guarding routine task-reordering (`RedisLockService`, `SET NX PX` + Lua compare-and-delete release), and rate-limit counters for Better Auth's `/sign-in/email`/`/sign-up/email` (`RedisRateLimitStorage`, wired as Better Auth's `customStorage` rather than `secondaryStorage` so session/verification data never lands in Redis). All three **fail open** — a Redis outage degrades to "no cache"/"no rate limit" rather than an outage, except the distributed lock, which fails closed (`503`) since reordering without it could corrupt task ordering.
 - **RabbitMQ** carries a single domain event today: `RoutineCreatedProducer` publishes `routine.created` (fire-and-forget — a broker outage must never fail routine creation) after `POST /routines`, consumed in-process by `RoutineCreatedConsumer`, currently just a logging placeholder for future side effects (notifications, analytics, etc.). The envelope carries a `correlationId` propagated from the originating HTTP request; the queue is declared with a dead-letter exchange/queue (`routine_events.dlx`/`routine_events.dlq`, asserted at startup by `RoutineEventsDeadLetterTopologyInitializer`), and the consumer acks/nacks manually — a processing failure is nacked without requeue, routing it to the DLQ instead of being silently dropped or retried forever.
 - **Google Cloud Storage** stores practice recording bytes privately; only metadata (object name, content type, size) lives in Postgres. `GcpStorageService.uploadObject` writes incoming buffers to a short-lived temp file and uses `bucket.upload()` rather than `file.save(buffer)` — the latter reliably triggered a `"Cannot call write after a stream was destroyed"` race in the client library's internal write pipeline when the whole buffer was pushed before the async upload-request setup had settled; `bucket.upload()` feeds the same pipeline via a paced `fs.createReadStream`, avoiding the race.
@@ -294,7 +294,8 @@ Validated in `src/config/env.validation.ts`; the app fails fast on startup if re
 | `API_PREFIX` | no | `api` | Global route prefix |
 | `API_VERSION` | no | `v1` | |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` | Compose only | — | Configure the `postgres` container in `compose.yaml` |
-| `DATABASE_URL` | yes | — | Postgres connection string read by Prisma (CLI and `PrismaService`). `compose.yaml` overrides it to point at the `postgres` service; `.env.example` has a `localhost` default for running the API outside Docker |
+| `DATABASE_URL` | yes | — | Postgres connection string read by Prisma (CLI and `PrismaService`). `compose.yaml` overrides it to point at the `postgres` service; `.env.example` has a `localhost` default for running the API outside Docker. In deployed environments this is Neon's **pooled** endpoint |
+| `DIRECT_DATABASE_URL` | no | falls back to `DATABASE_URL` | Neon's **direct** (unpooled) endpoint, read only by the Prisma CLI via `prisma.config.ts` for migrations — `DATABASE_URL`'s transaction-mode pooler can't run DDL reliably. Leave unset locally; setting it to a remote database redirects every local `npx prisma ...` command at that database |
 | `BETTER_AUTH_SECRET` | yes | — | Encryption/signing secret for Better Auth, min 32 characters. Generate with `openssl rand -base64 32`; never reuse the placeholder in `.env.example` |
 | `BETTER_AUTH_URL` | yes | — | Base URL the API is served from (e.g. `http://localhost:3000`). Better Auth appends its own `/auth` base path |
 | `CORS_ORIGINS` | yes | — | Comma-separated browser origins allowed to send the session cookie (e.g. `http://localhost:8081`). Required, not defaulted — a credentialed request can't be paired with a wildcard origin, so every web client has to be named. Parsed into a list that drives **both** `enableCors()` and Better Auth's `trustedOrigins`; see [Authentication](docs/authentication.md#browser-clients--cors). Native clients send no `Origin` header and are unaffected |
@@ -442,7 +443,9 @@ Selection/week-boundary rules and the full one-time GCP setup script: [`docs/wee
 
 `.github/workflows/google-cloudrun-docker.yml` builds the API image, pushes it to Artifact Registry, and deploys it to Cloud Run on every push to `main`. `.github/workflows/ci.yml` runs format/lint/test/build on every PR. Both authenticate to Google Cloud via **Direct Workload Identity Federation** — no service account key ever exists as a GitHub secret; a GitHub Actions OIDC token is exchanged directly for short-lived GCP credentials, scoped to a specific repo. A third, independent workflow (`.github/workflows/k6-performance.yml`) runs in parallel with these on every PR/merge — see [Performance testing](#performance-testing) below.
 
-Full one-time GCP project setup script, gotchas hit getting it working, and how to roll back a bad deploy: [`docs/deployment.md`](docs/deployment.md).
+The deploy workflow applies pending Prisma migrations before shifting traffic, by running `prisma migrate deploy` from the image it just built. Postgres is Neon (free plan) reached over a public TLS endpoint — there is no Cloud SQL connector, VPC connector, or proxy anywhere in the pipeline.
+
+Full one-time GCP project setup script, database provisioning, gotchas hit getting it working, and how to roll back a bad deploy: [`docs/deployment.md`](docs/deployment.md).
 
 ## Performance testing
 

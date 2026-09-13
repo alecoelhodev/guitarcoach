@@ -15,6 +15,10 @@ export default defineConfig({
     seed: 'tsx prisma/seed.ts',
   },
   datasource: {
-    url: process.env['DATABASE_URL'],
+    // The CLI runs DDL (migrate/reset/seed/studio), so it needs a direct
+    // connection: in deployed environments DATABASE_URL points at Neon's
+    // transaction-mode pooler, which can't run migrations reliably. Falls back
+    // to DATABASE_URL for local/Compose/e2e, where there's only one endpoint.
+    url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'],
   },
 });

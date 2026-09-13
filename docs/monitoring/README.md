@@ -33,8 +33,8 @@ set up today.
 gcloud services enable monitoring.googleapis.com --project=YOUR_PROJECT_ID
 
 # Grant the existing Cloud Run runtime service account permission to write
-# metrics. This is the same service account already used for Cloud SQL/GCS/
-# Secret Manager access — see docs/deployment.md.
+# metrics. This is the same service account already used for GCS/Secret
+# Manager access — see docs/deployment.md.
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:guitarcoach-api-runtime@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/monitoring.metricWriter"

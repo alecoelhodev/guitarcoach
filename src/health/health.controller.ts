@@ -15,6 +15,11 @@ import { RedisHealthIndicator } from './indicators/redis.health-indicator';
 
 const DISK_THRESHOLD_PERCENT = 0.9;
 
+// Terminus defaults this ping to 1000ms, which is shorter than Neon's
+// scale-to-zero wake — the first check after ~5 minutes idle would report the
+// database down purely on cold start. See docs/deployment.md.
+const DATABASE_PING_TIMEOUT_MS = 3000;
+
 @Controller('health')
 export class HealthController {
   constructor(
@@ -56,7 +61,10 @@ export class HealthController {
           path: '/',
           thresholdPercent: DISK_THRESHOLD_PERCENT,
         }),
-      () => this.db.pingCheck('database', this.prisma),
+      () =>
+        this.db.pingCheck('database', this.prisma, {
+          timeout: DATABASE_PING_TIMEOUT_MS,
+        }),
       () => this.redis.pingCheck('redis'),
       () => this.rabbitmq.pingCheck('rabbitmq'),
     ]);

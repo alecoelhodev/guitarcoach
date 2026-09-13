@@ -49,5 +49,12 @@ export default async function globalSetup(): Promise<void> {
   await ensureDatabaseExists(testDatabaseUrl);
 
   process.env.DATABASE_URL = testDatabaseUrl;
+  // DIRECT_DATABASE_URL takes precedence over DATABASE_URL in prisma.config.ts,
+  // and the `migrate deploy` child process re-reads .env itself (dotenv doesn't
+  // override vars already present in the environment, so it's this assignment
+  // that wins). Without pinning it here, a developer with a remote
+  // DIRECT_DATABASE_URL in .env would have `npm run test:e2e` migrate — and the
+  // per-spec beforeEach deleteMany() then wipe — that remote database.
+  process.env.DIRECT_DATABASE_URL = testDatabaseUrl;
   execSync('npx prisma migrate deploy', { stdio: 'inherit' });
 }
