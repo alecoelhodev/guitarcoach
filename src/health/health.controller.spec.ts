@@ -120,6 +120,9 @@ describe('HealthController', () => {
       expect(prismaHealthIndicator.pingCheck).toHaveBeenCalledWith(
         'database',
         prismaService,
+        // Longer than Terminus's 1000ms default so Neon's scale-to-zero wake
+        // doesn't report the database down on the first check after idle.
+        { timeout: 3000 },
       );
       expect(redisHealthIndicator.pingCheck).toHaveBeenCalledWith('redis');
       expect(rabbitmqHealthIndicator.pingCheck).toHaveBeenCalledWith(

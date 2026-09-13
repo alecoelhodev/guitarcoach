@@ -413,6 +413,45 @@ describe('validate', () => {
     expect(result.TEST_DATABASE_URL).toBe(TEST_DATABASE_URL);
   });
 
+  it('accepts a valid DIRECT_DATABASE_URL', () => {
+    const DIRECT_DATABASE_URL =
+      'postgresql://user:pass@ep-example.us-east-1.aws.neon.tech/db?sslmode=verify-full&schema=public';
+
+    const result = validate({
+      NODE_ENV: 'production',
+      DATABASE_URL,
+      DIRECT_DATABASE_URL,
+      BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL,
+      CORS_ORIGINS,
+      REDIS_URL,
+      RABBITMQ_URL,
+      GCP_PROJECT_ID,
+      GCS_RECORDINGS_BUCKET,
+      OPENAI_API_KEY,
+      OPENAI_MODEL,
+    });
+
+    expect(result.DIRECT_DATABASE_URL).toBe(DIRECT_DATABASE_URL);
+  });
+
+  it('fails when DIRECT_DATABASE_URL is not a valid URL', () => {
+    expect(() =>
+      validate({
+        NODE_ENV: 'production',
+        DATABASE_URL,
+        DIRECT_DATABASE_URL: 'not-a-url',
+        BETTER_AUTH_SECRET,
+        BETTER_AUTH_URL,
+        CORS_ORIGINS,
+        REDIS_URL,
+        RABBITMQ_URL,
+        GCP_PROJECT_ID,
+        GCS_RECORDINGS_BUCKET,
+      }),
+    ).toThrow('Environment validation failed');
+  });
+
   it('fails when TEST_DATABASE_URL is not a valid URL', () => {
     expect(() =>
       validate({

@@ -8,6 +8,7 @@
 #
 #    - Artifact Registry (artifactregistry.googleapis.com)
 #    - Cloud Run (run.googleapis.com)
+#    - Secret Manager (secretmanager.googleapis.com)
 #    - IAM Credentials API (iamcredentials.googleapis.com)
 #
 #    You can learn more about enabling APIs at
@@ -74,11 +75,41 @@ jobs:
           password: '${{ steps.auth.outputs.auth_token }}'
           registry: '${{ env.REGION }}-docker.pkg.dev'
 
-      - name: 'Build and Push Container'
+      - id: 'build'
+        name: 'Build and Push Container'
         run: |-
           DOCKER_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }}"
           docker build --tag "${DOCKER_TAG}" .
           docker push "${DOCKER_TAG}"
+          echo "docker_tag=${DOCKER_TAG}" >> "$GITHUB_OUTPUT"
+
+      # Migrations run against the direct (unpooled) Neon endpoint: DATABASE_URL
+      # points at the transaction-mode pooler, which can't run DDL reliably.
+      # This secret is granted to the Workload Identity principal only — the
+      # Cloud Run runtime SA has no access to it.
+      - id: 'migrate-secrets'
+        name: 'Fetch migration database URL'
+        uses: 'google-github-actions/get-secretmanager-secrets@v3'
+        with:
+          secrets: |-
+            DIRECT_DATABASE_URL:${{ env.PROJECT_ID }}/guitarcoach-direct-database-url
+
+      # Runs from the image just built and pushed, so the migrations applied are
+      # exactly the ones baked into the revision being deployed (the production
+      # image ships the Prisma CLI plus prisma/ and prisma.config.ts — `prisma`
+      # and `dotenv` are runtime dependencies; see Dockerfile).
+      #
+      # This lands BEFORE the deploy, so the currently-serving revision briefly
+      # runs against the new schema. Keep migrations additive (expand/contract):
+      # a destructive change needs to be split across two deploys.
+      - name: 'Run database migrations'
+        env:
+          DIRECT_DATABASE_URL: '${{ steps.migrate-secrets.outputs.DIRECT_DATABASE_URL }}'
+        run: |-
+          docker run --rm -e DIRECT_DATABASE_URL \
+            "${{ steps.build.outputs.docker_tag }}" \
+            ./node_modules/.bin/prisma migrate deploy
+
       - id: 'deploy'
         name: 'Deploy to Cloud Run'
 
@@ -91,12 +122,15 @@ jobs:
           # NOTE: If using a pre-built image, update the image name below:
 
           image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }}'
-          # Dedicated least-privilege runtime SA, Cloud SQL connector, and
-          # public invocation — none have a dedicated action input, so all
-          # three go through `flags`. --allow-unauthenticated lets requests
-          # reach the service at all; the app's own global AuthGuard (Better
-          # Auth) remains the real per-route authorization boundary.
-          flags: '--service-account=guitarcoach-api-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:guitar-coach-db --allow-unauthenticated'
+          # Dedicated least-privilege runtime SA and public invocation —
+          # neither has a dedicated action input, so both go through `flags`.
+          # --allow-unauthenticated lets requests reach the service at all; the
+          # app's own global AuthGuard (Better Auth) remains the real per-route
+          # authorization boundary. Postgres is Neon, reached over the public TLS
+          # endpoint in DATABASE_URL — hence --clear-cloudsql-instances rather
+          # than just dropping --add-cloudsql-instances: `add` is additive, so an
+          # omitted flag leaves the existing connector annotation on the service.
+          flags: '--service-account=guitarcoach-api-runtime@${{ env.PROJECT_ID }}.iam.gserviceaccount.com --allow-unauthenticated --clear-cloudsql-instances'
           env_vars: |-
             NODE_ENV=production
             GCP_PROJECT_ID=${{ env.PROJECT_ID }}

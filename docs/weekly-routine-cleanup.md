@@ -41,19 +41,21 @@ gcloud iam service-accounts create weekly-routine-cleanup-job \
 
 # Store the production DATABASE_URL as a secret and grant the job's service
 # account access to it. Must exist before `gcloud run jobs create` below,
-# which references it via --set-secrets.
-printf '%s' "postgresql://USER:PASSWORD@HOST:5432/DB" | \
+# which references it via --set-secrets. Use Neon's POOLED endpoint — the same
+# value as the API's own SERVICE_NAME-database-url secret (see
+# docs/deployment.md); it's a separate secret so the job's IAM footprint stays
+# independent of the API's, not because the value differs.
+#
+# No connector or VPC configuration is needed: Neon is a public TLS endpoint,
+# and Cloud Run has direct internet egress by default. This job never runs
+# migrations, so it needs only the pooled URL, never DIRECT_DATABASE_URL.
+printf '%s' "postgresql://USER:PASSWORD@ep-xxx-pooler.REGION.aws.neon.tech/DB?sslmode=verify-full&schema=public" | \
   gcloud secrets create weekly-routine-cleanup-database-url \
   --project=PROJECT_ID --data-file=-
 gcloud secrets add-iam-policy-binding weekly-routine-cleanup-database-url \
   --project=PROJECT_ID \
   --member="serviceAccount:weekly-routine-cleanup-job@PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
-# Network reachability from Cloud Run to wherever Postgres is hosted (Cloud
-# SQL private/public IP via a VPC connector or the Cloud SQL Auth Proxy, vs.
-# an externally hosted Postgres reachable over the public internet with SSL)
-# is a separate concern this repo doesn't prescribe — configure whatever the
-# chosen DATABASE_URL target actually requires.
 
 # Deploy as a Cloud Run Job using the SAME image/tag you already build and
 # push for the API — the job only overrides the container command below, so

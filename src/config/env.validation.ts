@@ -6,6 +6,12 @@ export const envSchema = z.object({
   API_PREFIX: z.string().min(1).default('api'),
   API_VERSION: z.string().min(1).default('v1'),
   DATABASE_URL: z.url(),
+  // Direct (unpooled) connection string, used only by the Prisma CLI for
+  // migrations. DATABASE_URL points at Neon's transaction-mode pooler in
+  // deployed environments, which can't run DDL reliably. Optional because
+  // local/Compose/e2e run against a single unpooled Postgres and fall back to
+  // DATABASE_URL — see prisma.config.ts.
+  DIRECT_DATABASE_URL: z.url().optional(),
   TEST_DATABASE_URL: z.url().optional(),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: z.url(),
