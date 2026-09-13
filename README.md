@@ -23,6 +23,7 @@ Backend API for Guitar Coach, built with [NestJS](https://nestjs.com/).
 - [Continuous deployment](#continuous-deployment)
 - [Performance testing](#performance-testing)
 - [Secret scanning](#secret-scanning)
+- [Code quality](#code-quality)
 - [Tradeoffs](#tradeoffs)
 - [Architecture decisions](#architecture-decisions)
 - [Resources](#resources)
@@ -71,6 +72,7 @@ This file covers architecture, data model, and local setup. Full endpoint walkth
 - [API contract](docs/api-contract.md) — the committed `openapi.json`, response-DTO conventions, and how a frontend stays in sync
 - [Performance testing](docs/performance-testing.md) — k6 smoke/load tests for the practice-sessions create/list/get workflows
 - [Secret scanning](docs/secret-scanning.md) — the pre-commit + CI credential scan, its config, and the baseline
+- [Code quality](docs/code-quality.md) — SonarQube Cloud analysis, the SonarJS lint rules, coverage, and the quality gate
 - [Architecture decisions](docs/architecture-decisions.md) — rationale behind non-obvious design choices
 - [Monitoring & alerting](docs/monitoring/README.md) — OTel metrics, alert policies, log-based metrics
 
@@ -464,6 +466,14 @@ Every commit is scanned for leaked credentials before it is created, and every P
 Findings are always reported with `--redact`, so the rule, file and line are shown but the matched value never reaches terminal scrollback or CI logs. CI additionally uploads a SARIF report to the repository's Security tab.
 
 Config, false-positive handling, the baseline, and the `BETTERLEAKS_SKIP` emergency bypass: [`docs/secret-scanning.md`](docs/secret-scanning.md).
+
+## Code quality
+
+Every pull request and push to `main` is analyzed by [SonarQube Cloud](https://www.sonarsource.com/products/sonarcloud/) — bugs, code smells, cognitive complexity, duplication, and test coverage measured from `coverage/lcov.info`. It runs as its own workflow in parallel with the other PR checks, on the free OSS plan, which covers unlimited public projects with unlimited branch and pull-request analysis. The only setup is a `SONAR_TOKEN` secret; there is nothing to install.
+
+The same rule family also runs locally: [`eslint-plugin-sonarjs`](https://github.com/SonarSource/eslint-plugin-sonarjs) is wired into `eslint.config.mjs`, so `npm run lint` (and therefore the pre-commit hook) catches most of what Sonar would report, before a push rather than after. Its rules are `error` severity and do fail the build.
+
+The quality gate is deliberately report-only for now: results are uploaded and visible, but a failing gate does not turn the workflow red. Gate policy, coverage wiring, and how to handle a false positive: [`docs/code-quality.md`](docs/code-quality.md).
 
 ## Tradeoffs
 
