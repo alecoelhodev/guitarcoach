@@ -1,3 +1,40 @@
+# --- Secret scanning (see docs/secret-scanning.md) ---------------------------
+# Fails closed: a commit is blocked if the scanner is missing, because a
+# silently skipped scan is worse than a noisy one.
+if [ -n "$BETTERLEAKS_SKIP" ]; then
+  echo "WARNING: BETTERLEAKS_SKIP is set - skipping the secret scan."
+  echo "         CI scans this commit anyway, so a real secret will still fail the PR."
+else
+  if [ -x .tooling/bin/betterleaks ]; then
+    betterleaks_bin=.tooling/bin/betterleaks
+  elif command -v betterleaks > /dev/null 2>&1; then
+    betterleaks_bin=betterleaks
+  else
+    echo ""
+    echo "Secret scanner not found, so this commit cannot be checked for leaked credentials."
+    echo "Install it with:"
+    echo "  node scripts/install-betterleaks.mjs"
+    echo "(it normally installs itself during 'npm install')"
+    exit 1
+  fi
+
+  # -v reports the rule, file and line so the fix is obvious; --redact keeps the
+  # matched value itself out of terminal scrollback and any captured hook output.
+  if ! "$betterleaks_bin" git . --pre-commit --staged --redact --no-banner -v; then
+    echo ""
+    echo "A possible secret was found in your staged changes - commit blocked."
+    echo ""
+    echo "Fix it by one of:"
+    echo "  * remove the value and load it from .env / Secret Manager instead"
+    echo "  * if it is genuinely not a secret, add a 'betterleaks:allow' comment on that line"
+    echo "  * for a whole class of false positives, add a narrow path filter in .betterleaks.toml"
+    echo ""
+    echo "If you must bypass this in an emergency: BETTERLEAKS_SKIP=1 git commit ..."
+    echo "See docs/secret-scanning.md"
+    exit 1
+  fi
+fi
+
 if git diff --cached --name-only | grep -q '^package\.json$'; then
   echo "package.json is staged — checking package-lock.json is in sync..."
 

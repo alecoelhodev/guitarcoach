@@ -1,0 +1,58 @@
+# Betterleaks config - see docs/secret-scanning.md
+#
+# Scans run at full (default "low") sensitivity on purpose: --confidence medium
+# was measured to miss BETTER_AUTH_SECRET- and POSTGRES_PASSWORD-shaped generic
+# secrets, which is exactly this project's risk profile.
+
+[extend]
+useDefault = true
+
+# --- Rule overrides -------------------------------------------------------
+#
+# These supply `id` + `filter` and NO `regex`, so each built-in rule keeps its
+# own detection pattern and only gains a path filter. Detection strength is
+# unchanged (`betterleaks config check` still reports the full rule set).
+#
+# Do NOT add a top-level `prefilter`/`filter` here instead: with
+# `[extend] useDefault = true` the default config's own values replace them, so
+# such a filter silently does nothing while looking perfectly correct.
+#
+# Scope is kept deliberately narrow - prose docs, *.example templates, unit-test
+# fixtures, vendored agent docs, and Prisma's generated client. Application code,
+# k6 scripts and GitHub workflows are NOT filtered: a real credential committed
+# there must still fail. Pre-existing findings in those files are pinned in
+# .betterleaks-baseline.json instead, so a new one still trips the scan.
+#
+# The baseline file is itself filtered: it is scanner output, and a redacted
+# `postgres://user:REDACTED@host` still has the shape of a credential URI, so
+# without this the baseline flags itself on the next run. It cannot be sanitized
+# instead - betterleaks matches a baseline entry on much more than its
+# fingerprint, and stripping those fields stops it suppressing anything at all.
+# If regenerating the baseline ever introduces findings from a rule other than
+# the two below, that rule needs the same filter entry.
+
+[[rules]]
+id = "generic-password"
+filter = '''
+matchesAny(attributes["path"], [
+  `(?i)\.(?:md|mdx)$`,
+  `\.example$`,
+  `(?i)\.spec\.ts$`,
+  `(?:^|/)\.agents/`,
+  `(?:^|/)generated/prisma/`,
+  `(?:^|/)\.betterleaks-baseline\.json$`,
+])
+'''
+
+[[rules]]
+id = "generic-credential-uri"
+filter = '''
+matchesAny(attributes["path"], [
+  `(?i)\.(?:md|mdx)$`,
+  `\.example$`,
+  `(?i)\.spec\.ts$`,
+  `(?:^|/)\.agents/`,
+  `(?:^|/)generated/prisma/`,
+  `(?:^|/)\.betterleaks-baseline\.json$`,
+])
+'''
