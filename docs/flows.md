@@ -43,7 +43,7 @@ sequenceDiagram
 
 ## Core write
 
-Representative example: `POST /routines` (`src/routines/routines.controller.ts:32-38` → `RoutinesService.create`, `src/routines/routines.service.ts:73-90`).
+Representative example: `POST /routines` (`src/routines/routines.controller.ts:36-41` → `RoutinesService.create`, `src/routines/routines.service.ts:96-116`).
 
 ```mermaid
 sequenceDiagram
@@ -67,18 +67,18 @@ sequenceDiagram
 
 **Validation happens before the handler runs.** `CreateRoutineDto` uses `class-validator` decorators; the global `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })` (`src/main.ts:61-67`) rejects any request body with unrecognized properties rather than silently dropping them.
 
-**Ownership is enforced two different ways depending on the operation.** On `create`, ownership is established by writing `userId` directly into the row (`routines.service.ts:74-76`, `data: { ...dto, userId }` — there's nothing to check yet, the row doesn't exist). On every other operation, ownership is enforced by scoping the query itself to `{ id, userId }`: `findById` uses `findFirst({ where: { id, userId } })` and throws `NotFoundException` if nothing matches (`routines.service.ts:120-130`); `update` (`routines.service.ts:144-159`) and `remove` (`routines.service.ts:161-178`) use `updateMany`/`deleteMany` with the same `where` and check `count === 0`. A routine that exists but belongs to someone else is indistinguishable from a routine that doesn't exist — both return `404`, never `403`, so existence isn't leaked to non-owners.
+**Ownership is enforced two different ways depending on the operation.** On `create`, ownership is established by writing `userId` directly into the row (`routines.service.ts:101`, `data: { ...dto, userId }` — there's nothing to check yet, the row doesn't exist). On every other operation, ownership is enforced by scoping the query itself to `{ id, userId }`: `findById` uses `findFirst({ where: { id, userId } })` and throws `NotFoundException` if nothing matches (`routines.service.ts:147-158`); `update` (`routines.service.ts:172-192`) and `remove` (`routines.service.ts:194-210`) use `updateMany`/`deleteMany` with the same `where` and check `count === 0`. A routine that exists but belongs to someone else is indistinguishable from a routine that doesn't exist — both return `404`, never `403`, so existence isn't leaked to non-owners.
 
-**Prisma errors are translated locally, not globally.** `routines.service.ts:50-57` defines a local `isPrismaErrorCode` type guard (`error instanceof Prisma.PrismaClientKnownRequestError && error.code === code`) — duplicated verbatim in `tasks.service.ts` and `users.service.ts` rather than shared, deliberately (see [CLAUDE.md](../CLAUDE.md) — no shared exception filter). The mapping used across `RoutinesService`:
+**Prisma errors are translated locally, not globally.** `routines.service.ts:73-79` defines a local `isPrismaErrorCode` type guard (`error instanceof Prisma.PrismaClientKnownRequestError && error.code === code`) — duplicated verbatim in `tasks.service.ts` and `users.service.ts` rather than shared, deliberately (see [CLAUDE.md](../CLAUDE.md) — no shared exception filter). The mapping used across `RoutinesService`:
 
 | Prisma code | Meaning here | Thrown as |
 |---|---|---|
-| `P2025` (record not found) | task not attached to routine on `updateTask`/`removeTask` | `NotFoundException` (lines 246-250, 272-275) |
-| `P2002` (unique violation) | task already assigned, or its position is taken | `ConflictException` (`addTask` lines 211-214, `updateTask` lines 251-254) |
-| `P2003` (FK violation) | deleting a routine that still has tasks attached | `ConflictException` (`remove`, lines 171-175) |
-| `P2003` (FK violation) | attaching a task id that doesn't exist | `NotFoundException` (`addTask`, lines 216-218) — same Prisma code, opposite direction, so the exception depends on which side of the relation is missing |
+| `P2025` (record not found) | task not attached to routine on `updateTask`/`removeTask` | `NotFoundException` (lines 279-283, 305-309) |
+| `P2002` (unique violation) | task already assigned, or its position is taken | `ConflictException` (`addTask` lines 244-248, `updateTask` lines 284-288) |
+| `P2003` (FK violation) | deleting a routine that still has tasks attached | `ConflictException` (`remove`, lines 204-208) |
+| `P2003` (FK violation) | attaching a task id that doesn't exist | `NotFoundException` (`addTask`, lines 249-253) — same Prisma code, opposite direction, so the exception depends on which side of the relation is missing |
 
-**The event publish happens after the commit, and is never awaited.** `create()` awaits `prisma.routine.create(...)` first — the write is durable — then calls `this.routineCreatedProducer.publish(routine)` synchronously (`routines.service.ts:83-87`). The surrounding `try/catch` only guards a *synchronous* throw from `publish` itself; `publish` (`routine-created.producer.ts:26-58`) is fire-and-forget internally too (see [Asynchronous domain event](#asynchronous-domain-event)), so a RabbitMQ outage can never fail a `POST /routines` request.
+**The event publish happens after the commit, and is never awaited.** `create()` awaits `prisma.routine.create(...)` first — the write is durable — then calls `this.routineCreatedProducer.publish(routine)` synchronously (`routines.service.ts:109-113`). The surrounding `try/catch` only guards a *synchronous* throw from `publish` itself; `publish` (`routine-created.producer.ts:26-58`) is fire-and-forget internally too (see [Asynchronous domain event](#asynchronous-domain-event)), so a RabbitMQ outage can never fail a `POST /routines` request.
 
 **Why it's built this way:** this is the pattern documented in `CLAUDE.md` as "async domain events are fire-and-forget" and "ownership checks, not just auth" — copy this shape (query scoped to `{ id, userId }`, `404` on a miss, publish after commit) for any new user-scoped write.
 
