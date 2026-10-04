@@ -1,5 +1,5 @@
 ---
-description: Print the runbook for resetting and re-seeding the production guitar-coach Neon database
+description: Print the runbook for resetting the production guitar-coach Neon database
 ---
 
 Output the runbook below to the user verbatim (as markdown), filling in nothing and asking nothing first. Do not run any of these commands yourself and do not fetch the `guitarcoach-direct-database-url` secret — this project's convention is that the operator runs every step themselves, in their own terminal, so the DB credentials never have to pass through the assistant.
@@ -17,7 +17,9 @@ Then output this runbook:
 
 3. From the `guitar-coach` project root:
    `npx prisma migrate reset`
-   This drops/recreates the `public` schema, reapplies every migration, then automatically runs `prisma/seed.ts` (wired as `package.json`'s `prisma.seed` script). Keep the interactive confirmation prompt — don't pass `--force`.
+   This drops/recreates the `public` schema and reapplies every migration. It does **not** seed: Prisma 7 removed automatic seeding from `migrate reset` (and its `--skip-seed` flag with it), so the database comes back empty. Keep the interactive confirmation prompt — don't pass `--force`.
+
+   **Never seed production.** Do not run `npx prisma db seed`, `npm run db:seed` or `npx tsx prisma/seed.ts` against this database: `prisma/seed.ts` creates an admin and four users that share a password committed to this public repo, so seeded accounts must never exist in prod. The seed refuses any non-local `DATABASE_URL` unless `SEED_ALLOW_NON_LOCAL=true` is set — never set it here.
 
 4. Clean up:
    `unset DATABASE_URL`

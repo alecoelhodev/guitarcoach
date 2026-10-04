@@ -242,6 +242,12 @@ describe('RoutinesController (e2e)', () => {
         .expect(404);
     });
 
+    it('returns 400 when the id is not a UUID', async () => {
+      const user = await seedUser();
+
+      await asUser(user.id).get('/api/v1/routines/not-a-uuid').expect(400);
+    });
+
     it("returns 404 for another user's routine", async () => {
       const owner = await seedUser({ email: 'owner@example.com' });
       const other = await seedUser({
@@ -684,6 +690,17 @@ describe('RoutinesController (e2e)', () => {
         .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
         .send({ targetDurationMinutes: 20 })
         .expect(404);
+    });
+
+    it('returns 400 when the taskId is not a UUID', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+
+      await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/not-a-uuid`)
+        .send({ targetDurationMinutes: 20 })
+        .expect(400);
     });
 
     it('returns 409 when the new position is already taken', async () => {

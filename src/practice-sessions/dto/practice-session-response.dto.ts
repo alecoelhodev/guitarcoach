@@ -1,9 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PaginationMetaDto } from '../../common/dto/pagination-meta.dto';
 
+export class PracticeSessionTaskSummaryResponseDto {
+  id: string;
+  title: string;
+}
+
 export class PracticeSessionTaskResponseDto {
   practiceSessionId: string;
   taskId: string;
+
+  @ApiProperty({ type: () => PracticeSessionTaskSummaryResponseDto })
+  task: PracticeSessionTaskSummaryResponseDto;
 
   @ApiProperty({ required: false, nullable: true })
   durationMinutes?: number | null;

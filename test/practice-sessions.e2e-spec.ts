@@ -13,6 +13,10 @@ interface PracticeSessionResponseBody {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  sessionTasks: {
+    taskId: string;
+    task: { id: string; title: string };
+  }[];
 }
 
 interface PaginatedPracticeSessionsResponseBody {
@@ -42,6 +46,7 @@ describe('PracticeSessionsController (e2e)', () => {
     prisma = app.get(PrismaService);
     gcpStorage = app.get(GcpStorageService);
     await prisma.recording.deleteMany();
+    await prisma.practiceSessionTask.deleteMany();
     await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
     await prisma.routine.deleteMany();
@@ -146,12 +151,50 @@ describe('PracticeSessionsController (e2e)', () => {
       );
     });
 
+    it("embeds each session task's id and title", async () => {
+      const user = await seedUser();
+      const task = await prisma.task.create({
+        data: { title: 'Chromatic warm-up' },
+      });
+      const created = (
+        await createPracticeSession(user.id, {
+          title: 'Morning warm-up',
+          tasks: [{ taskId: task.id, durationMinutes: 10 }],
+        }).expect(201)
+      ).body as PracticeSessionResponseBody;
+      expect(created.sessionTasks[0].task).toEqual({
+        id: task.id,
+        title: 'Chromatic warm-up',
+      });
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/practice-sessions/${created.id}`)
+        .expect(200);
+
+      expect(
+        (response.body as PracticeSessionResponseBody).sessionTasks,
+      ).toEqual([
+        expect.objectContaining({
+          taskId: task.id,
+          task: { id: task.id, title: 'Chromatic warm-up' },
+        }),
+      ]);
+    });
+
     it('returns 404 when the session does not exist', async () => {
       const user = await seedUser();
 
       await asUser(user.id)
         .get('/api/v1/practice-sessions/00000000-0000-0000-0000-000000000000')
         .expect(404);
+    });
+
+    it('returns 400 when the sessionId is not a UUID', async () => {
+      const user = await seedUser();
+
+      await asUser(user.id)
+        .get('/api/v1/practice-sessions/not-a-uuid')
+        .expect(400);
     });
 
     it("returns 404 for another user's session", async () => {
@@ -347,6 +390,14 @@ describe('PracticeSessionsController (e2e)', () => {
           '/api/v1/recordings/00000000-0000-0000-0000-000000000000/download-url',
         )
         .expect(404);
+    });
+
+    it('returns 400 when the recordingId is not a UUID', async () => {
+      const user = await seedUser();
+
+      await asUser(user.id)
+        .get('/api/v1/recordings/not-a-uuid/download-url')
+        .expect(400);
     });
 
     it("returns 404 for another user's recording", async () => {

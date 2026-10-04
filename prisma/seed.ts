@@ -15,11 +15,16 @@ import { createAuth } from '../src/auth/auth';
 import { RedisRateLimitStorage } from '../src/auth/redis-rate-limit-storage';
 import { SecurityEventLogger } from '../src/observability/security-event.logger';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { assertSeedTargetIsLocal } from '../src/prisma/seed-target';
 
 expand(dotenv.config());
 
+// Before anything connects: this seed must never write to a non-local DB.
+assertSeedTargetIsLocal(process.env);
+
 // Not a real secret: every seeded account shares this password so new
-// developers can log in with any of the seeded emails right away.
+// developers can log in with any of the seeded emails right away. That is
+// also why assertSeedTargetIsLocal() above refuses non-local databases.
 const SEED_PASSWORD = 'Password123!';
 
 interface SeedUser {

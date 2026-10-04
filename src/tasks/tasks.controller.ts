@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -38,14 +39,14 @@ export class TasksController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string): Promise<TaskResponseDto> {
+  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<TaskResponseDto> {
     return this.tasksService.findById(id);
   }
 
   @Patch(':id')
   @Roles(['admin'])
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateTaskDto: UpdateTaskDto,
   ): Promise<TaskResponseDto> {
     return this.tasksService.update(id, updateTaskDto);
@@ -54,7 +55,7 @@ export class TasksController {
   @Delete(':id')
   @Roles(['admin'])
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id') id: string): Promise<void> {
+  remove(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.tasksService.remove(id);
   }
 }

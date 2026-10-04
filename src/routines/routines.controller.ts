@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -51,7 +52,7 @@ export class RoutinesController {
   @Get(':id')
   findOne(
     @Session() session: UserSession,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<RoutineResponseDto> {
     return this.routinesService.findById(session.user.id, id);
   }
@@ -59,7 +60,7 @@ export class RoutinesController {
   @Patch(':id')
   update(
     @Session() session: UserSession,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateRoutineDto: UpdateRoutineDto,
   ): Promise<RoutineResponseDto> {
     return this.routinesService.update(session.user.id, id, updateRoutineDto);
@@ -69,7 +70,7 @@ export class RoutinesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @Session() session: UserSession,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     return this.routinesService.remove(session.user.id, id);
   }
@@ -77,7 +78,7 @@ export class RoutinesController {
   @Post(':routineId/tasks')
   addTask(
     @Session() session: UserSession,
-    @Param('routineId') routineId: string,
+    @Param('routineId', ParseUUIDPipe) routineId: string,
     @Body() addRoutineTaskDto: AddRoutineTaskDto,
   ): Promise<RoutineTaskResponseDto> {
     return this.routinesService.addTask(
@@ -90,7 +91,7 @@ export class RoutinesController {
   @Get(':routineId/tasks')
   findTasks(
     @Session() session: UserSession,
-    @Param('routineId') routineId: string,
+    @Param('routineId', ParseUUIDPipe) routineId: string,
   ): Promise<RoutineTaskWithTaskResponseDto[]> {
     return this.routinesService.findTasks(session.user.id, routineId);
   }
@@ -98,7 +99,7 @@ export class RoutinesController {
   @Patch(':routineId/tasks/reorder')
   reorderTasks(
     @Session() session: UserSession,
-    @Param('routineId') routineId: string,
+    @Param('routineId', ParseUUIDPipe) routineId: string,
     @Body() reorderRoutineTasksDto: ReorderRoutineTasksDto,
   ): Promise<RoutineTaskResponseDto[]> {
     return this.routinesService.reorderTasks(
@@ -111,8 +112,8 @@ export class RoutinesController {
   @Patch(':routineId/tasks/:taskId')
   updateTask(
     @Session() session: UserSession,
-    @Param('routineId') routineId: string,
-    @Param('taskId') taskId: string,
+    @Param('routineId', ParseUUIDPipe) routineId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
     @Body() updateRoutineTaskDto: UpdateRoutineTaskDto,
   ): Promise<RoutineTaskResponseDto> {
     return this.routinesService.updateTask(
@@ -127,8 +128,8 @@ export class RoutinesController {
   @HttpCode(HttpStatus.NO_CONTENT)
   removeTask(
     @Session() session: UserSession,
-    @Param('routineId') routineId: string,
-    @Param('taskId') taskId: string,
+    @Param('routineId', ParseUUIDPipe) routineId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
   ): Promise<void> {
     return this.routinesService.removeTask(session.user.id, routineId, taskId);
   }

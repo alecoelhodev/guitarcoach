@@ -1906,9 +1906,27 @@
           }
         }
       },
+      "PracticeSessionTaskSummaryResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ]
+      },
       "PracticeSessionTaskResponseDto": {
         "type": "object",
         "properties": {
+          "task": {
+            "$ref": "#/components/schemas/PracticeSessionTaskSummaryResponseDto"
+          },
           "durationMinutes": {
             "type": "number",
             "nullable": true
@@ -1932,6 +1950,7 @@
           }
         },
         "required": [
+          "task",
           "practiceSessionId",
           "taskId",
           "completed",

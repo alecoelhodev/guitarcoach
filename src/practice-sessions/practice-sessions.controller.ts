@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UploadedFile,
@@ -69,7 +70,7 @@ export class PracticeSessionsController {
   @Get(':sessionId')
   findOne(
     @Session() session: UserSession,
-    @Param('sessionId') sessionId: string,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
   ): Promise<PracticeSessionResponseDto> {
     return this.practiceSessionsService.findById(session.user.id, sessionId);
   }
@@ -78,7 +79,7 @@ export class PracticeSessionsController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadRecording(
     @Session() session: UserSession,
-    @Param('sessionId') sessionId: string,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<RecordingResponseDto> {
     if (!file) {
@@ -91,7 +92,7 @@ export class PracticeSessionsController {
   @Get(':sessionId/recordings')
   findRecordings(
     @Session() session: UserSession,
-    @Param('sessionId') sessionId: string,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
   ): Promise<RecordingResponseDto[]> {
     return this.recordingsService.findAllForSession(session.user.id, sessionId);
   }
