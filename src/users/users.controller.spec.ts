@@ -22,7 +22,10 @@ describe('UsersController RBAC metadata', () => {
     },
   );
 
-  it('leaves "me" open to any authenticated user', () => {
-    expect(rolesRequiredFor('me')).toBeUndefined();
-  });
+  it.each(['me', 'deleteMe'] as const)(
+    'leaves %s open to any authenticated user',
+    (methodName) => {
+      expect(rolesRequiredFor(methodName)).toBeUndefined();
+    },
+  );
 });

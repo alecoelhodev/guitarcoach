@@ -1,8 +1,10 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { GcpStorageService } from '../gcp-storage/gcp-storage.service';
 import { Prisma } from '../generated/prisma/client';
 import { SecurityEventLogger } from '../observability/security-event.logger';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +13,7 @@ import { UserResponseDto } from './dto/user-response.dto';
 
 const PRISMA_ERROR_UNIQUE_CONSTRAINT = 'P2002';
 const PRISMA_ERROR_RECORD_NOT_FOUND = 'P2025';
+const GCS_DELETE_CONCURRENCY = 5;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -27,9 +30,12 @@ function isPrismaErrorCode(
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly securityEventLogger: SecurityEventLogger,
+    private readonly gcpStorage: GcpStorageService,
   ) {}
 
   findAll(): Promise<UserResponseDto[]> {
@@ -69,14 +75,7 @@ export class UsersService {
   }
 
   async remove(actorId: string, id: string): Promise<void> {
-    try {
-      await this.prisma.user.delete({ where: { id } });
-    } catch (error) {
-      if (isPrismaErrorCode(error, PRISMA_ERROR_RECORD_NOT_FOUND)) {
-        throw new NotFoundException(`User with id "${id}" not found`);
-      }
-      throw error;
-    }
+    await this.purge(id);
 
     // Audit trail entry — only reached once the delete has actually
     // committed, never on a failed/not-found delete.
@@ -87,5 +86,73 @@ export class UsersService {
       targetType: 'user',
       targetId: id,
     });
+  }
+
+  async deleteAccount(userId: string): Promise<void> {
+    await this.purge(userId);
+
+    this.securityEventLogger.log({
+      eventType: 'user.self_deleted',
+      outcome: 'success',
+      actorId: userId,
+      targetType: 'user',
+      targetId: userId,
+    });
+  }
+
+  /**
+   * Deletes a user and everything they own. Routine, PracticeSession and
+   * Recording FKs are Restrict, so children go first; Session and Account
+   * cascade. Storage objects are removed only after the commit, so a GCS
+   * failure can never leave a half-deleted account.
+   */
+  private async purge(userId: string): Promise<void> {
+    const objectNames = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      if (!user) {
+        throw new NotFoundException(`User with id "${userId}" not found`);
+      }
+
+      const recordings = await tx.recording.findMany({
+        where: { userId },
+        select: { objectName: true },
+      });
+
+      await tx.recording.deleteMany({ where: { userId } });
+      await tx.practiceSessionTask.deleteMany({
+        where: { practiceSession: { userId } },
+      });
+      await tx.practiceSession.deleteMany({ where: { userId } });
+      await tx.routineTask.deleteMany({ where: { routine: { userId } } });
+      await tx.routine.deleteMany({ where: { userId } });
+      await tx.user.delete({ where: { id: userId } });
+
+      return recordings.map((r) => r.objectName);
+    });
+
+    await this.deleteObjects(userId, objectNames);
+  }
+
+  private async deleteObjects(
+    userId: string,
+    objectNames: string[],
+  ): Promise<void> {
+    for (let i = 0; i < objectNames.length; i += GCS_DELETE_CONCURRENCY) {
+      const batch = objectNames.slice(i, i + GCS_DELETE_CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map((name) => this.gcpStorage.deleteObject(name)),
+      );
+      results.forEach((result, j) => {
+        if (result.status === 'rejected') {
+          this.logger.error(
+            `Orphaned recording object "${batch[j]}" after deleting user "${userId}"`,
+            result.reason,
+          );
+        }
+      });
+    }
   }
 }

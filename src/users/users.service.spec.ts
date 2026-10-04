@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { GcpStorageService } from '../gcp-storage/gcp-storage.service';
 import { Prisma, User } from '../generated/prisma/client';
 import { SecurityEventLogger } from '../observability/security-event.logger';
 import { PrismaService } from '../prisma/prisma.service';
@@ -36,6 +37,12 @@ type MockPrismaService = {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  recording: { findMany: jest.Mock; deleteMany: jest.Mock };
+  practiceSessionTask: { deleteMany: jest.Mock };
+  practiceSession: { deleteMany: jest.Mock };
+  routineTask: { deleteMany: jest.Mock };
+  routine: { deleteMany: jest.Mock };
+  $transaction: jest.Mock;
 };
 
 type MockSecurityEventLogger = { log: jest.Mock };
@@ -44,6 +51,7 @@ describe('UsersService', () => {
   let service: UsersService;
   let prisma: MockPrismaService;
   let securityEventLogger: MockSecurityEventLogger;
+  let gcpStorage: { deleteObject: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -53,8 +61,19 @@ describe('UsersService', () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
+      recording: {
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn(),
+      },
+      practiceSessionTask: { deleteMany: jest.fn() },
+      practiceSession: { deleteMany: jest.fn() },
+      routineTask: { deleteMany: jest.fn() },
+      routine: { deleteMany: jest.fn() },
+      // The interactive transaction runs against the same mock client.
+      $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     };
     securityEventLogger = { log: jest.fn() };
+    gcpStorage = { deleteObject: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -64,6 +83,7 @@ describe('UsersService', () => {
           provide: SecurityEventLogger,
           useValue: securityEventLogger,
         },
+        { provide: GcpStorageService, useValue: gcpStorage },
       ],
     }).compile();
 
@@ -130,19 +150,38 @@ describe('UsersService', () => {
   });
 
   describe('remove', () => {
-    it('deletes an existing user', async () => {
-      prisma.user.delete.mockResolvedValue(buildUser());
+    it('deletes the user after everything they own, children first', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser());
 
       await expect(
         service.remove('admin-id', 'some-id'),
       ).resolves.toBeUndefined();
+
+      const order = [
+        prisma.recording.deleteMany,
+        prisma.practiceSessionTask.deleteMany,
+        prisma.practiceSession.deleteMany,
+        prisma.routineTask.deleteMany,
+        prisma.routine.deleteMany,
+        prisma.user.delete,
+      ].map((m) => m.mock.invocationCallOrder[0]);
+      expect(order).toEqual([...order].sort((a, b) => a - b));
+      expect(prisma.recording.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'some-id' },
+      });
+      expect(prisma.practiceSessionTask.deleteMany).toHaveBeenCalledWith({
+        where: { practiceSession: { userId: 'some-id' } },
+      });
+      expect(prisma.routineTask.deleteMany).toHaveBeenCalledWith({
+        where: { routine: { userId: 'some-id' } },
+      });
       expect(prisma.user.delete).toHaveBeenCalledWith({
         where: { id: 'some-id' },
       });
     });
 
     it('logs a user.deleted audit event with the actor and target on success', async () => {
-      prisma.user.delete.mockResolvedValue(buildUser());
+      prisma.user.findUnique.mockResolvedValue(buildUser());
 
       await service.remove('admin-id', 'some-id');
 
@@ -155,20 +194,67 @@ describe('UsersService', () => {
       });
     });
 
-    it('throws NotFoundException for an unknown id', async () => {
-      prisma.user.delete.mockRejectedValue(prismaError('P2025'));
+    it('throws NotFoundException for an unknown id and deletes nothing', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(service.remove('admin-id', 'unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+      expect(prisma.recording.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+      expect(securityEventLogger.log).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteAccount', () => {
+    it('deletes every recording object after the rows are gone', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser());
+      const names = Array.from({ length: 7 }, (_, i) => `users/u/obj-${i}`);
+      prisma.recording.findMany.mockResolvedValue(
+        names.map((objectName) => ({ objectName })),
+      );
+
+      await service.deleteAccount('u');
+
+      expect(
+        (gcpStorage.deleteObject.mock.calls as [string][]).map(
+          ([name]) => name,
+        ),
+      ).toEqual(names);
+      expect(
+        gcpStorage.deleteObject.mock.invocationCallOrder[0],
+      ).toBeGreaterThan(prisma.user.delete.mock.invocationCallOrder[0]);
     });
 
-    it('does not log an audit event when the delete fails', async () => {
-      prisma.user.delete.mockRejectedValue(prismaError('P2025'));
+    it('still succeeds and audits when a storage delete fails', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser());
+      prisma.recording.findMany.mockResolvedValue([
+        { objectName: 'users/u/a' },
+        { objectName: 'users/u/b' },
+      ]);
+      gcpStorage.deleteObject
+        .mockRejectedValueOnce(new Error('gcs down'))
+        .mockResolvedValueOnce(undefined);
 
-      await expect(service.remove('admin-id', 'unknown-id')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.deleteAccount('u')).resolves.toBeUndefined();
+
+      expect(gcpStorage.deleteObject).toHaveBeenCalledTimes(2);
+      expect(securityEventLogger.log).toHaveBeenCalledWith({
+        eventType: 'user.self_deleted',
+        outcome: 'success',
+        actorId: 'u',
+        targetType: 'user',
+        targetId: 'u',
+      });
+    });
+
+    it('touches no storage when the transaction fails', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildUser());
+      prisma.recording.findMany.mockResolvedValue([{ objectName: 'x' }]);
+      prisma.user.delete.mockRejectedValue(new Error('db down'));
+
+      await expect(service.deleteAccount('u')).rejects.toThrow('db down');
+      expect(gcpStorage.deleteObject).not.toHaveBeenCalled();
       expect(securityEventLogger.log).not.toHaveBeenCalled();
     });
   });
