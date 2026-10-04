@@ -37,7 +37,7 @@ npx jest -t "test name substring"
 npx prisma generate      # regenerate Prisma Client into src/generated/prisma after a schema change
 npx prisma migrate dev   # create/apply a migration against DATABASE_URL
 npx prisma studio        # browse the database (http://localhost:5555)
-npx tsx prisma/seed.ts   # (re)run the idempotent dev seed script
+npx tsx prisma/seed.ts   # (re)run the idempotent dev seed script (local DBs only; see SEED_ALLOW_NON_LOCAL)
 
 # Weekly routine cleanup job (standalone entrypoint, see Architecture notes)
 npm run weekly-routine-cleanup        # run the job locally via tsx
@@ -146,7 +146,7 @@ Full endpoint curl examples, provisioning scripts, and architecture-decision rat
 
 ## Key file pointers
 
-- `prisma/schema.prisma` — full data model (models, enums, relations); `prisma/seed.ts` — idempotent dev seed data.
+- `prisma/schema.prisma` — full data model (models, enums, relations); `prisma/seed.ts` — idempotent dev seed data, guarded by `src/prisma/seed-target.ts` so it never runs against a non-local DB (Prisma 7's `migrate reset` no longer seeds; never seed prod).
 - `src/config/env.validation.ts` — the Zod schema that is the single source of truth for every environment variable; update this first when adding a new env var, then `.env.example`.
 - `src/prisma/prisma.service.ts` — the shared `PrismaService`/`PrismaModule` (`@Global()`); reuse this rather than instantiating `PrismaClient` elsewhere.
 - `src/auth/auth.ts` — Better Auth instance construction (plugins, rate limiting, email hooks); `src/auth/redis-rate-limit-storage.ts` — the Redis-backed rate-limit storage implementation.
