@@ -15,7 +15,7 @@ Every script authenticates as a dedicated test user via the real Better Auth flo
 # Required — no defaults, must be set explicitly (credentials are never
 # hardcoded in the scripts themselves)
 export K6_TEST_USER_EMAIL="k6-perf-test@example.com"
-export K6_TEST_USER_PASSWORD="Str0ngPassw0rd!123"
+export K6_TEST_USER_PASSWORD="<your-k6-test-user-password>"
 
 # Optional — defaults to http://localhost:3000, and the scripts refuse any
 # other host unless K6_ALLOW_NON_LOCAL=true is also set (see Safety below)
