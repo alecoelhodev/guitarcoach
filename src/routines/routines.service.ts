@@ -192,19 +192,30 @@ export class RoutinesService {
   }
 
   async remove(userId: string, id: string): Promise<void> {
-    try {
-      const { count } = await this.prisma.routine.deleteMany({
-        where: { id, userId },
-      });
+    const hasTasks = () =>
+      new ConflictException(
+        `Routine with id "${id}" has tasks assigned and cannot be deleted`,
+      );
 
-      if (count === 0) {
-        throw notFound(id);
-      }
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // Checked explicitly: Postgres 18 reports the RESTRICT violation as 23001,
+        // which Prisma does not map to P2003, so relying on the FK error gave a 500.
+        if ((await tx.routineTask.count({ where: { routineId: id } })) > 0) {
+          const owned = await tx.routine.count({ where: { id, userId } });
+          throw owned === 0 ? notFound(id) : hasTasks();
+        }
+
+        const { count } = await tx.routine.deleteMany({
+          where: { id, userId },
+        });
+        if (count === 0) {
+          throw notFound(id);
+        }
+      });
     } catch (error) {
       if (isPrismaErrorCode(error, PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT)) {
-        throw new ConflictException(
-          `Routine with id "${id}" has tasks assigned and cannot be deleted`,
-        );
+        throw hasTasks();
       }
       throw error;
     }

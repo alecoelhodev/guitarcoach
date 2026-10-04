@@ -660,6 +660,62 @@ describe('RoutinesController (e2e)', () => {
       ).toBe(20);
     });
 
+    it('clears the target duration when sent null', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id, targetDurationMinutes: 15 })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({ targetDurationMinutes: null })
+        .expect(200);
+
+      expect(
+        (response.body as RoutineTaskResponseBody).targetDurationMinutes,
+      ).toBeNull();
+    });
+
+    it('leaves the target duration alone when the field is omitted', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id, targetDurationMinutes: 15 })
+        .expect(201);
+
+      const response = await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({})
+        .expect(200);
+
+      expect(
+        (response.body as RoutineTaskResponseBody).targetDurationMinutes,
+      ).toBe(15);
+    });
+
+    it('returns 400 for a zero target duration', async () => {
+      const user = await seedUser();
+      const routine = (await createRoutine(user.id).expect(201))
+        .body as RoutineResponseBody;
+      const task = await seedTask();
+      await asUser(user.id)
+        .post(`/api/v1/routines/${routine.id}/tasks`)
+        .send({ taskId: task.id })
+        .expect(201);
+
+      await asUser(user.id)
+        .patch(`/api/v1/routines/${routine.id}/tasks/${task.id}`)
+        .send({ targetDurationMinutes: 0 })
+        .expect(400);
+    });
+
     it("returns 404 for another user's routine", async () => {
       const owner = await seedUser({ email: 'owner@example.com' });
       const other = await seedUser({

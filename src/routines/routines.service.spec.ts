@@ -107,6 +107,7 @@ type MockPrismaService = {
     findMany: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
+    count: jest.Mock;
   };
   $transaction: jest.Mock;
 };
@@ -145,6 +146,7 @@ describe('RoutinesService', () => {
         findMany: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
+        count: jest.fn(),
       },
       $transaction: jest.fn(),
     };
@@ -423,6 +425,13 @@ describe('RoutinesService', () => {
   });
 
   describe('remove', () => {
+    beforeEach(() => {
+      prisma.$transaction.mockImplementation(
+        (fn: (tx: MockPrismaService) => unknown) => fn(prisma),
+      );
+      prisma.routineTask.count.mockResolvedValue(0);
+    });
+
     it('deletes a routine owned by the user', async () => {
       prisma.routine.deleteMany.mockResolvedValue({ count: 1 });
 
@@ -440,7 +449,26 @@ describe('RoutinesService', () => {
       );
     });
 
-    it('throws ConflictException when the routine has tasks assigned', async () => {
+    it('throws ConflictException without deleting when the routine has tasks', async () => {
+      prisma.routineTask.count.mockResolvedValue(2);
+      prisma.routine.count.mockResolvedValue(1);
+
+      await expect(service.remove(USER_ID, 'referenced-id')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.routine.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it("throws NotFoundException for another user's routine that has tasks", async () => {
+      prisma.routineTask.count.mockResolvedValue(2);
+      prisma.routine.count.mockResolvedValue(0);
+
+      await expect(service.remove(USER_ID, 'not-mine')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('still maps a foreign-key error to ConflictException', async () => {
       prisma.routine.deleteMany.mockRejectedValue(prismaError('P2003'));
 
       await expect(service.remove(USER_ID, 'referenced-id')).rejects.toThrow(
