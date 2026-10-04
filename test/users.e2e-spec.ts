@@ -1,7 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { App } from 'supertest/types';
+import { GcpStorageService } from './../src/gcp-storage/gcp-storage.service';
 import { PrismaService } from './../src/prisma/prisma.service';
 import { buildTestApp } from './support/build-test-app';
+import { FakeGcpStorageService } from './support/fake-gcp-storage.service';
 import { requestAs } from './support/request-as';
 
 interface UserResponseBody {
@@ -21,9 +23,11 @@ describe('UsersController (e2e)', () => {
 
     prisma = app.get(PrismaService);
     await prisma.recording.deleteMany();
+    await prisma.practiceSessionTask.deleteMany();
     await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
     await prisma.routine.deleteMany();
+    await prisma.task.deleteMany();
     await prisma.user.deleteMany();
   });
 
@@ -127,6 +131,90 @@ describe('UsersController (e2e)', () => {
       await admin()
         .delete('/api/v1/users/00000000-0000-0000-0000-000000000000')
         .expect(404);
+    });
+  });
+
+  describe('DELETE /api/v1/users/me', () => {
+    // Seeds a user owning one of everything a deletion has to clear,
+    // including an object in the fake bucket.
+    const seedOwner = async (email: string) => {
+      const user = await seedUser({ email, displayName: email });
+      const task = await prisma.task.create({
+        data: { title: `Task for ${email}` },
+      });
+      const routine = await prisma.routine.create({
+        data: { userId: user.id, title: 'Morning' },
+      });
+      await prisma.routineTask.create({
+        data: { routineId: routine.id, taskId: task.id, position: 0 },
+      });
+      const session = await prisma.practiceSession.create({
+        data: { userId: user.id, routineId: routine.id },
+      });
+      await prisma.practiceSessionTask.create({
+        data: { practiceSessionId: session.id, taskId: task.id },
+      });
+      const objectName = `users/${user.id}/practice-sessions/${session.id}/x-take.m4a`;
+      await prisma.recording.create({
+        data: {
+          userId: user.id,
+          practiceSessionId: session.id,
+          objectName,
+          originalFileName: 'take.m4a',
+          contentType: 'audio/mp4',
+          sizeBytes: 3,
+        },
+      });
+      const storage: FakeGcpStorageService = app.get(GcpStorageService);
+      storage.objects.set(objectName, Buffer.from('abc'));
+      return { user, task, objectName, storage };
+    };
+
+    it('deletes the caller and everything they own, and nothing else', async () => {
+      const me = await seedOwner('me@example.com');
+      const other = await seedOwner('other@example.com');
+
+      await requestAs(app, 'user', me.user.id)
+        .delete('/api/v1/users/me')
+        .expect(204);
+
+      expect(
+        await prisma.user.findUnique({ where: { id: me.user.id } }),
+      ).toBeNull();
+      expect(
+        await prisma.routine.count({ where: { userId: me.user.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.practiceSession.count({ where: { userId: me.user.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.recording.count({ where: { userId: me.user.id } }),
+      ).toBe(0);
+      expect(me.storage.objects.has(me.objectName)).toBe(false);
+
+      // Shared tasks and the other account survive untouched.
+      expect(await prisma.task.count({ where: { id: me.task.id } })).toBe(1);
+      expect(
+        await prisma.routine.count({ where: { userId: other.user.id } }),
+      ).toBe(1);
+      expect(
+        await prisma.practiceSession.count({
+          where: { userId: other.user.id },
+        }),
+      ).toBe(1);
+      expect(other.storage.objects.has(other.objectName)).toBe(true);
+    });
+
+    it('is open to ordinary users, not just admins', async () => {
+      const created = await seedUser();
+
+      await requestAs(app, 'user', created.id)
+        .delete('/api/v1/users/me')
+        .expect(204);
+    });
+
+    it('returns 401 without a session', async () => {
+      await requestAs(app).delete('/api/v1/users/me').expect(401);
     });
   });
 });

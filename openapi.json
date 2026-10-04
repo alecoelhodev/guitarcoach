@@ -377,6 +377,18 @@
         "tags": [
           "Users"
         ]
+      },
+      "delete": {
+        "operationId": "UsersController_deleteMe",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
       }
     },
     "/api/v1/users": {

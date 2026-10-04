@@ -24,6 +24,12 @@ export class UsersController {
     return session.user;
   }
 
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteMe(@Session() session: UserSession): Promise<void> {
+    return this.usersService.deleteAccount(session.user.id);
+  }
+
   @Get()
   @Roles(['admin'])
   findAll(): Promise<UserResponseDto[]> {
