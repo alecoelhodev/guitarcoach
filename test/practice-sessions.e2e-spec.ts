@@ -136,6 +136,36 @@ describe('PracticeSessionsController (e2e)', () => {
     });
   });
 
+  describe('DELETE /api/v1/practice-sessions?title=', () => {
+    it('deletes a session that has session tasks', async () => {
+      const user = await seedUser();
+      const task = await prisma.task.create({
+        data: { title: 'Chromatic warm-up' },
+      });
+      const created = (
+        await createPracticeSession(user.id, {
+          title: 'Morning warm-up',
+          tasks: [{ taskId: task.id, durationMinutes: 10 }],
+        }).expect(201)
+      ).body as PracticeSessionResponseBody;
+
+      const response = await asUser(user.id)
+        .delete('/api/v1/practice-sessions')
+        .query({ title: 'Morning warm-up' })
+        .expect(200);
+
+      expect(response.body).toEqual({ deletedCount: 1 });
+      await asUser(user.id)
+        .get(`/api/v1/practice-sessions/${created.id}`)
+        .expect(404);
+      expect(
+        await prisma.practiceSessionTask.count({
+          where: { practiceSessionId: created.id },
+        }),
+      ).toBe(0);
+    });
+  });
+
   describe('GET /api/v1/practice-sessions/:sessionId', () => {
     it('returns the session when owned by the requester', async () => {
       const user = await seedUser();
