@@ -1854,11 +1854,12 @@
       "UpdateRoutineTaskDto": {
         "type": "object",
         "properties": {
-          "position": {
+          "targetDurationMinutes": {
             "type": "number",
+            "nullable": true,
             "minimum": 1
           },
-          "targetDurationMinutes": {
+          "position": {
             "type": "number",
             "minimum": 1
           }
