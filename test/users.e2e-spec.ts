@@ -73,6 +73,10 @@ describe('UsersController (e2e)', () => {
         .get('/api/v1/users/00000000-0000-0000-0000-000000000000')
         .expect(404);
     });
+
+    it('returns 400 when the id is not a UUID', async () => {
+      await admin().get('/api/v1/users/not-a-uuid').expect(400);
+    });
   });
 
   describe('PATCH /api/v1/users/:id', () => {

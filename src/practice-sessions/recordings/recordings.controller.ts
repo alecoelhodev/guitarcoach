@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
@@ -18,7 +19,7 @@ export class RecordingsController {
   @Get(':recordingId/download-url')
   getDownloadUrl(
     @Session() session: UserSession,
-    @Param('recordingId') recordingId: string,
+    @Param('recordingId', ParseUUIDPipe) recordingId: string,
   ): Promise<DownloadUrlResponseDto> {
     return this.recordingsService.getDownloadUrl(session.user.id, recordingId);
   }
@@ -27,7 +28,7 @@ export class RecordingsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
     @Session() session: UserSession,
-    @Param('recordingId') recordingId: string,
+    @Param('recordingId', ParseUUIDPipe) recordingId: string,
   ): Promise<void> {
     return this.recordingsService.remove(session.user.id, recordingId);
   }

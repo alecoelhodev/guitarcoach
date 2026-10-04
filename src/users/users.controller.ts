@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
 } from '@nestjs/common';
 import { Roles, Session } from '@thallesp/nestjs-better-auth';
@@ -31,14 +32,14 @@ export class UsersController {
 
   @Get(':id')
   @Roles(['admin'])
-  findOne(@Param('id') id: string): Promise<UserResponseDto> {
+  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserResponseDto> {
     return this.usersService.findById(id);
   }
 
   @Patch(':id')
   @Roles(['admin'])
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<UserResponseDto> {
     return this.usersService.update(id, updateUserDto);
@@ -48,7 +49,7 @@ export class UsersController {
   @Roles(['admin'])
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Session() session: UserSession,
   ): Promise<void> {
     return this.usersService.remove(session.user.id, id);

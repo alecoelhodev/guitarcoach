@@ -154,6 +154,14 @@ describe('PracticeSessionsController (e2e)', () => {
         .expect(404);
     });
 
+    it('returns 400 when the sessionId is not a UUID', async () => {
+      const user = await seedUser();
+
+      await asUser(user.id)
+        .get('/api/v1/practice-sessions/not-a-uuid')
+        .expect(400);
+    });
+
     it("returns 404 for another user's session", async () => {
       const owner = await seedUser({ email: 'owner@example.com' });
       const other = await seedUser({
@@ -347,6 +355,14 @@ describe('PracticeSessionsController (e2e)', () => {
           '/api/v1/recordings/00000000-0000-0000-0000-000000000000/download-url',
         )
         .expect(404);
+    });
+
+    it('returns 400 when the recordingId is not a UUID', async () => {
+      const user = await seedUser();
+
+      await asUser(user.id)
+        .get('/api/v1/recordings/not-a-uuid/download-url')
+        .expect(400);
     });
 
     it("returns 404 for another user's recording", async () => {
