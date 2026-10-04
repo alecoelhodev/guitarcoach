@@ -11,6 +11,11 @@ const ROUTINE_ID = 'a3f1c2d4-4444-4b2a-9c3d-000000000000';
 const TASK_ID = 'a3f1c2d4-5555-4b2a-9c3d-000000000000';
 const OTHER_TASK_ID = 'a3f1c2d4-6666-4b2a-9c3d-000000000000';
 
+// Every read/create embeds each session task's id + title, never the full task.
+const SESSION_TASKS_INCLUDE = {
+  sessionTasks: { include: { task: { select: { id: true, title: true } } } },
+};
+
 function prismaError(code: string): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Prisma error', {
     code,
@@ -110,7 +115,7 @@ describe('PracticeSessionsService', () => {
           userId: USER_ID,
           routineId: undefined,
         },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
       });
       expect(session).toEqual(created);
     });
@@ -128,7 +133,7 @@ describe('PracticeSessionsService', () => {
       );
       expect(prisma.practiceSession.create).toHaveBeenCalledWith({
         data: { userId: USER_ID, routineId: ROUTINE_ID },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
       });
     });
 
@@ -167,7 +172,7 @@ describe('PracticeSessionsService', () => {
             ],
           },
         },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
       });
     });
 
@@ -198,7 +203,7 @@ describe('PracticeSessionsService', () => {
       expect(prisma.practiceSession.findMany).toHaveBeenCalledWith({
         where: { userId: USER_ID },
         orderBy: { createdAt: 'desc' },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
         skip: 0,
         take: 20,
       });
@@ -233,7 +238,7 @@ describe('PracticeSessionsService', () => {
       );
       expect(prisma.practiceSession.findFirst).toHaveBeenCalledWith({
         where: { id: created.id, userId: USER_ID },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
       });
     });
 

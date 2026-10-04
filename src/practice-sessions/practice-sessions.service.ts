@@ -43,9 +43,15 @@ export interface TaskStat {
   timesPracticedAllTime: number;
 }
 
+// Embeds each task's title so a client can render a session without a
+// GET /tasks/:id per row; Prisma loads the nested include in one batched query.
+const SESSION_TASKS_INCLUDE = {
+  sessionTasks: { include: { task: { select: { id: true, title: true } } } },
+} as const;
+
 const RECENT_INCLUDE = {
   routine: { select: { id: true, title: true } },
-  sessionTasks: { include: { task: { select: { id: true, title: true } } } },
+  ...SESSION_TASKS_INCLUDE,
 } as const;
 
 @Injectable()
@@ -83,7 +89,7 @@ export class PracticeSessionsService {
             },
           }),
         },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
       });
     } catch (error) {
       if (isPrismaErrorCode(error, PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT)) {
@@ -104,7 +110,7 @@ export class PracticeSessionsService {
       this.prisma.practiceSession.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        include: { sessionTasks: true },
+        include: SESSION_TASKS_INCLUDE,
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -123,7 +129,7 @@ export class PracticeSessionsService {
   ): Promise<PracticeSessionResponseDto> {
     const session = await this.prisma.practiceSession.findFirst({
       where: { id, userId },
-      include: { sessionTasks: true },
+      include: SESSION_TASKS_INCLUDE,
     });
 
     if (!session) {

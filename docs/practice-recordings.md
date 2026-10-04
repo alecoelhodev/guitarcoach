@@ -23,6 +23,10 @@ curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/practice-sessions \
 curl -i -b cookies.txt -X POST http://localhost:3000/api/v1/practice-sessions \
   -H 'Content-Type: application/json' \
   -d '{"routineId":"<routine-uuid>","tasks":[{"taskId":"<task-uuid>","durationMinutes":15,"completed":true}]}'
+# Every session response (create, list, get) embeds each task's id and title,
+# so a client never needs a GET /tasks/:id per row:
+#   "sessionTasks":[{"taskId":"<task-uuid>","task":{"id":"<task-uuid>","title":"Chromatic warm-up"},
+#                    "durationMinutes":15,"completed":true,...}]
 
 # Upload a recording to that session (multipart/form-data, field name "file")
 curl -i -b cookies.txt -X POST \

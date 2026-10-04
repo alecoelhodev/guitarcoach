@@ -13,6 +13,10 @@ interface PracticeSessionResponseBody {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  sessionTasks: {
+    taskId: string;
+    task: { id: string; title: string };
+  }[];
 }
 
 interface PaginatedPracticeSessionsResponseBody {
@@ -42,6 +46,7 @@ describe('PracticeSessionsController (e2e)', () => {
     prisma = app.get(PrismaService);
     gcpStorage = app.get(GcpStorageService);
     await prisma.recording.deleteMany();
+    await prisma.practiceSessionTask.deleteMany();
     await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
     await prisma.routine.deleteMany();
@@ -144,6 +149,36 @@ describe('PracticeSessionsController (e2e)', () => {
       expect((response.body as PracticeSessionResponseBody).id).toBe(
         created.id,
       );
+    });
+
+    it("embeds each session task's id and title", async () => {
+      const user = await seedUser();
+      const task = await prisma.task.create({
+        data: { title: 'Chromatic warm-up' },
+      });
+      const created = (
+        await createPracticeSession(user.id, {
+          title: 'Morning warm-up',
+          tasks: [{ taskId: task.id, durationMinutes: 10 }],
+        }).expect(201)
+      ).body as PracticeSessionResponseBody;
+      expect(created.sessionTasks[0].task).toEqual({
+        id: task.id,
+        title: 'Chromatic warm-up',
+      });
+
+      const response = await asUser(user.id)
+        .get(`/api/v1/practice-sessions/${created.id}`)
+        .expect(200);
+
+      expect(
+        (response.body as PracticeSessionResponseBody).sessionTasks,
+      ).toEqual([
+        expect.objectContaining({
+          taskId: task.id,
+          task: { id: task.id, title: 'Chromatic warm-up' },
+        }),
+      ]);
     });
 
     it('returns 404 when the session does not exist', async () => {
