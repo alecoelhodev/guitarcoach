@@ -40,14 +40,14 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Full history: the scanner reads SCM blame to attribute "new code",
           # which is what the quality gate is measured against.
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
           cache: npm
@@ -70,7 +70,7 @@ jobs:
         # v8 verifies the Scanner CLI's OpenPGP signature by default; ubuntu
         # -latest ships the gpg/dirmngr it needs. If that import ever fails the
         # fix is installing dirmngr, not skipSignatureVerification.
-        uses: SonarSource/sonarqube-scan-action@v8
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
         env:
           # SONAR_HOST_URL is not set on purpose: Cloud does not use it.
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
