@@ -149,23 +149,38 @@ export class TasksService {
   }
 
   async remove(id: string): Promise<void> {
+    const inUse = () =>
+      new ConflictException(
+        `Task with id "${id}" is used by a routine or a logged practice session and cannot be deleted`,
+      );
+
     try {
-      await this.prisma.task.delete({ where: { id } });
-      await Promise.all([
-        this.safeCacheDel(this.taskCacheKey(id)),
-        this.bumpListCacheVersion(),
-      ]);
+      await this.prisma.$transaction(async (tx) => {
+        // Checked explicitly: Postgres 18 reports the RESTRICT violation as 23001,
+        // which Prisma does not map to P2003, so relying on the FK error gave a 500.
+        if (
+          (await tx.routineTask.count({ where: { taskId: id } })) > 0 ||
+          (await tx.practiceSessionTask.count({ where: { taskId: id } })) > 0
+        ) {
+          throw inUse();
+        }
+
+        const { count } = await tx.task.deleteMany({ where: { id } });
+        if (count === 0) {
+          throw new NotFoundException(`Task with id "${id}" not found`);
+        }
+      });
     } catch (error) {
-      if (isPrismaErrorCode(error, PRISMA_ERROR_RECORD_NOT_FOUND)) {
-        throw new NotFoundException(`Task with id "${id}" not found`);
-      }
       if (isPrismaErrorCode(error, PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT)) {
-        throw new ConflictException(
-          `Task with id "${id}" is referenced by a routine and cannot be deleted`,
-        );
+        throw inUse();
       }
       throw error;
     }
+
+    await Promise.all([
+      this.safeCacheDel(this.taskCacheKey(id)),
+      this.bumpListCacheVersion(),
+    ]);
   }
 
   private taskCacheKey(id: string): string {

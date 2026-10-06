@@ -28,8 +28,13 @@ describe('TasksController (e2e)', () => {
     app = await buildTestApp();
 
     prisma = app.get(PrismaService);
+    await prisma.recording.deleteMany();
+    await prisma.practiceSessionTask.deleteMany();
+    await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
+    await prisma.routine.deleteMany();
     await prisma.task.deleteMany();
+    await prisma.user.deleteMany();
   });
 
   afterEach(async () => {
@@ -245,6 +250,49 @@ describe('TasksController (e2e)', () => {
       await admin()
         .delete('/api/v1/tasks/00000000-0000-0000-0000-000000000000')
         .expect(404);
+    });
+
+    // Postgres 18 reports the RESTRICT violation as 23001, not P2003, so these
+    // returned 500 until the service checked references before deleting.
+    describe('when the task is in use', () => {
+      const seedRoutineUsing = async (taskId: string) => {
+        const user = await prisma.user.create({
+          data: { email: 'jordan@example.com', displayName: 'Jordan' },
+        });
+        const routine = await prisma.routine.create({
+          data: { userId: user.id, title: 'Morning' },
+        });
+        await prisma.routineTask.create({
+          data: { routineId: routine.id, taskId, position: 0 },
+        });
+        return { user, routine };
+      };
+
+      it('returns 409 when a routine uses the task', async () => {
+        const task = await prisma.task.create({
+          data: { title: 'Chromatic warm-up' },
+        });
+        await seedRoutineUsing(task.id);
+
+        await admin().delete(`/api/v1/tasks/${task.id}`).expect(409);
+        await admin().get(`/api/v1/tasks/${task.id}`).expect(200);
+      });
+
+      it('returns 409 when only a logged practice session uses the task', async () => {
+        const task = await prisma.task.create({
+          data: { title: 'Chromatic warm-up' },
+        });
+        const { user, routine } = await seedRoutineUsing(task.id);
+        const session = await prisma.practiceSession.create({
+          data: { userId: user.id, routineId: routine.id },
+        });
+        await prisma.practiceSessionTask.create({
+          data: { practiceSessionId: session.id, taskId: task.id },
+        });
+        await prisma.routineTask.deleteMany({ where: { taskId: task.id } });
+
+        await admin().delete(`/api/v1/tasks/${task.id}`).expect(409);
+      });
     });
   });
 });

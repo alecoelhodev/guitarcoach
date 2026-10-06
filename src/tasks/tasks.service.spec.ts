@@ -34,8 +34,11 @@ type MockPrismaService = {
     count: jest.Mock;
     findUnique: jest.Mock;
     update: jest.Mock;
-    delete: jest.Mock;
+    deleteMany: jest.Mock;
   };
+  routineTask: { count: jest.Mock };
+  practiceSessionTask: { count: jest.Mock };
+  $transaction: jest.Mock;
 };
 
 type MockCache = {
@@ -57,9 +60,15 @@ describe('TasksService', () => {
         count: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
-        delete: jest.fn(),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      routineTask: { count: jest.fn().mockResolvedValue(0) },
+      practiceSessionTask: { count: jest.fn().mockResolvedValue(0) },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: MockPrismaService) => Promise<unknown>) => fn(prisma),
+    );
     cache = {
       get: jest.fn().mockResolvedValue(undefined),
       set: jest.fn().mockResolvedValue(undefined),
@@ -348,18 +357,14 @@ describe('TasksService', () => {
   });
 
   describe('remove', () => {
-    it('deletes an existing task', async () => {
-      prisma.task.delete.mockResolvedValue(buildTask());
-
+    it('deletes an unused task', async () => {
       await expect(service.remove('some-id')).resolves.toBeUndefined();
-      expect(prisma.task.delete).toHaveBeenCalledWith({
+      expect(prisma.task.deleteMany).toHaveBeenCalledWith({
         where: { id: 'some-id' },
       });
     });
 
     it('invalidates the task cache entry and bumps the list cache version', async () => {
-      prisma.task.delete.mockResolvedValue(buildTask());
-
       await service.remove('some-id');
 
       expect(cache.del).toHaveBeenCalledWith('tasks:some-id');
@@ -367,15 +372,34 @@ describe('TasksService', () => {
     });
 
     it('throws NotFoundException for an unknown id', async () => {
-      prisma.task.delete.mockRejectedValue(prismaError('P2025'));
+      prisma.task.deleteMany.mockResolvedValue({ count: 0 });
 
       await expect(service.remove('unknown-id')).rejects.toThrow(
         NotFoundException,
       );
+      expect(cache.del).not.toHaveBeenCalled();
     });
 
-    it('throws ConflictException when the task is referenced by a routine', async () => {
-      prisma.task.delete.mockRejectedValue(prismaError('P2003'));
+    it('throws ConflictException without deleting when a routine uses the task', async () => {
+      prisma.routineTask.count.mockResolvedValue(1);
+
+      await expect(service.remove('referenced-id')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.task.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException without deleting when a practice session uses the task', async () => {
+      prisma.practiceSessionTask.count.mockResolvedValue(2);
+
+      await expect(service.remove('referenced-id')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.task.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('still maps a racing foreign-key violation (P2003) to ConflictException', async () => {
+      prisma.task.deleteMany.mockRejectedValue(prismaError('P2003'));
 
       await expect(service.remove('referenced-id')).rejects.toThrow(
         ConflictException,
@@ -383,7 +407,6 @@ describe('TasksService', () => {
     });
 
     it('still succeeds when the cache is down', async () => {
-      prisma.task.delete.mockResolvedValue(buildTask());
       cache.get.mockRejectedValue(new Error('Redis unavailable'));
       cache.del.mockRejectedValue(new Error('Redis unavailable'));
       cache.set.mockRejectedValue(new Error('Redis unavailable'));

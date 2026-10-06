@@ -89,7 +89,7 @@ jobs:
       # Cloud Run runtime SA has no access to it.
       - id: 'migrate-secrets'
         name: 'Fetch migration database URL'
-        uses: 'google-github-actions/get-secretmanager-secrets@v3'
+        uses: 'google-github-actions/get-secretmanager-secrets@bc9c54b29fdffb8a47776820a7d26e77b379d262' # google-github-actions/get-secretmanager-secrets@v3.0.0
         with:
           secrets: |-
             DIRECT_DATABASE_URL:${{ env.PROJECT_ID }}/guitarcoach-direct-database-url
