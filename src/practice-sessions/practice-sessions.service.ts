@@ -72,6 +72,12 @@ export class PracticeSessionsService {
     if (routineId) {
       await this.routinesService.findById(userId, routineId);
     }
+    if (tasks?.length) {
+      await this.routinesService.assertTasksVisible(
+        userId,
+        tasks.map((task) => task.taskId),
+      );
+    }
 
     try {
       return await this.prisma.practiceSession.create({

@@ -21,6 +21,7 @@ function buildTask(overrides: Partial<Task> = {}): Task {
     difficulty: 'easy',
     referenceLink: null,
     description: null,
+    ownerId: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -130,12 +131,14 @@ describe('TasksService', () => {
       const result = await service.findAll({});
 
       expect(prisma.task.findMany).toHaveBeenCalledWith({
-        where: {},
+        where: { ownerId: null },
         skip: 0,
         take: 20,
         orderBy: { createdAt: 'desc' },
       });
-      expect(prisma.task.count).toHaveBeenCalledWith({ where: {} });
+      expect(prisma.task.count).toHaveBeenCalledWith({
+        where: { ownerId: null },
+      });
       expect(result).toEqual({
         data: tasks,
         meta: { total: 2, page: 1, limit: 20, totalPages: 1 },
@@ -153,7 +156,11 @@ describe('TasksService', () => {
         difficulty: 'easy',
       });
 
-      const expectedWhere = { category: 'technique', difficulty: 'easy' };
+      const expectedWhere = {
+        ownerId: null,
+        category: 'technique',
+        difficulty: 'easy',
+      };
       expect(prisma.task.findMany).toHaveBeenCalledWith({
         where: expectedWhere,
         skip: 5,
@@ -203,6 +210,7 @@ describe('TasksService', () => {
       await service.findAll({ q: 'Penta', category: 'technique' });
 
       const expectedWhere = {
+        ownerId: null,
         category: 'technique',
         title: { contains: 'Penta', mode: 'insensitive' },
       };
@@ -220,6 +228,7 @@ describe('TasksService', () => {
 
       expect(prisma.task.count).toHaveBeenCalledWith({
         where: {
+          ownerId: null,
           title: { contains: '100\\%\\_a\\\\b', mode: 'insensitive' },
         },
       });
@@ -306,14 +315,31 @@ describe('TasksService', () => {
     });
   });
 
+  describe('createPrivate', () => {
+    it('stamps the owner, and leaves the shared list cache alone', async () => {
+      prisma.task.create.mockResolvedValue(buildTask({ ownerId: 'u1' }));
+
+      await service.createPrivate('u1', {
+        title: 'Riff A',
+        description: 'Bars 1-4',
+      });
+
+      expect(prisma.task.create).toHaveBeenCalledWith({
+        data: { title: 'Riff A', description: 'Bars 1-4', ownerId: 'u1' },
+      });
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findAllUnpaginated', () => {
-    it('returns every task with no pagination arguments sent to Prisma', async () => {
+    it('returns every shared task with no pagination arguments sent to Prisma', async () => {
       const tasks = [buildTask(), buildTask({ id: 'other-id' })];
       prisma.task.findMany.mockResolvedValue(tasks);
 
       const result = await service.findAllUnpaginated();
 
       expect(prisma.task.findMany).toHaveBeenCalledWith({
+        where: { ownerId: null },
         orderBy: { createdAt: 'desc' },
       });
       expect(result).toEqual(tasks);
@@ -321,6 +347,25 @@ describe('TasksService', () => {
   });
 
   describe('findById', () => {
+    it("hides another user's private task, even from the cache", async () => {
+      cache.get.mockImplementation((key: string) =>
+        Promise.resolve(
+          key === 'tasks:t-private'
+            ? buildTask({ ownerId: 'owner' })
+            : undefined,
+        ),
+      );
+
+      await expect(
+        service.findById('t-private', 'someone-else'),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.findById('t-private', 'owner'),
+      ).resolves.toMatchObject({
+        ownerId: 'owner',
+      });
+    });
+
     it('returns the matching task', async () => {
       const created = buildTask();
       prisma.task.findUnique.mockResolvedValue(created);

@@ -24,6 +24,7 @@ import {
 } from './dto/routine-task-response.dto';
 import { UpdateRoutineDto } from './dto/update-routine.dto';
 import { UpdateRoutineTaskDto } from './dto/update-routine-task.dto';
+import { visibleTo } from '../tasks/task-visibility';
 
 const PRISMA_ERROR_RECORD_NOT_FOUND = 'P2025';
 const PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT = 'P2003';
@@ -240,6 +241,7 @@ export class RoutinesService {
     dto: AddRoutineTaskDto,
   ): Promise<RoutineTaskResponseDto> {
     await this.findById(userId, routineId);
+    await this.assertTasksVisible(userId, [dto.taskId]);
     const position = dto.position ?? (await this.nextPosition(routineId));
 
     try {
@@ -261,6 +263,17 @@ export class RoutinesService {
         throw new NotFoundException(`Task with id "${dto.taskId}" not found`);
       }
       throw error;
+    }
+  }
+
+  /** Another user's private task reads as missing, like the FK violation below. */
+  async assertTasksVisible(userId: string, taskIds: string[]): Promise<void> {
+    const unique = [...new Set(taskIds)];
+    const visible = await this.prisma.task.count({
+      where: { id: { in: unique }, ...visibleTo(userId) },
+    });
+    if (visible !== unique.length) {
+      throw new NotFoundException('One or more tasks were not found');
     }
   }
 

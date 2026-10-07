@@ -29,6 +29,7 @@ Notes:
 - The authenticated user ID always comes from the session cookie, never from the request body — the model has no way to supply or override it. Confirming a `previousResponseId` that isn't yours (or has expired) returns `404 Not Found`, same non-leaking convention as every other user-scoped resource.
 - OpenAI's built-in `web_search` tool is available to the model but optional — it's only used when the model decides external information would improve the plan, not on every request.
 - The plan is validated twice before anything is written: once by the Responses API's Structured Outputs schema, and again by application code (at least one task, positive durations, task durations reasonably summing to the requested total) — model output is never trusted blindly.
+- **The plan's tasks are private to the user who confirmed it.** They are created with `Task.ownerId` set to that user, so they appear in that user's routine but never in the shared library (`GET /tasks`), never in the routine coach's catalog, and never for another user (`GET /tasks/:id`, adding to a routine, or logging in a session all return `404`). The planner runs for any signed-in user, while the shared library is admin-curated (`POST /tasks` is admin-only). Deleting the account deletes these tasks too.
 - OpenAI timeouts/outages map to `504`/`503` and never affect any other endpoint; a malformed or unexpected model response maps to `502`.
 
 ## Rate limit

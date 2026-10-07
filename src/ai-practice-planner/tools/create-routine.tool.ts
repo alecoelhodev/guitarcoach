@@ -40,7 +40,9 @@ export class CreateRoutineTool {
     // 1..N in the order the model gave the tasks.
     for (let index = 0; index < args.tasks.length; index++) {
       const task = args.tasks[index];
-      const createdTask = await this.tasksService.create({
+      // Private to this user: the planner runs for anyone, and the shared library is
+      // admin-curated (POST /tasks is admin-only).
+      const createdTask = await this.tasksService.createPrivate(userId, {
         title: task.title,
         description: task.description,
       });

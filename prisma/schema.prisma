@@ -43,12 +43,17 @@ model Task {
   difficulty    TaskDifficulty?
   referenceLink String?         @map("reference_link")
   description   String?
+  /// Null for a shared library task. Set for a task the AI planner created inside one user's
+  /// routine: visible to that user only, never listed in the library.
+  ownerId       String?         @map("owner_id") @db.Uuid
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
+  owner                User?                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   routineTasks         RoutineTask[]
   practiceSessionTasks PracticeSessionTask[]
 
+  @@index([ownerId])
   @@map("tasks")
 }
 
@@ -68,6 +73,7 @@ model User {
   routines         Routine[]
   practiceSessions PracticeSession[]
   recordings       Recording[]
+  privateTasks     Task[]
   sessions         Session[]
   accounts         Account[]
 
@@ -75,15 +81,15 @@ model User {
 }
 
 model Session {
-  id              String   @id @default(uuid()) @db.Uuid
-  expiresAt       DateTime @map("expires_at")
-  token           String   @unique
-  ipAddress       String?  @map("ip_address")
-  userAgent       String?  @map("user_agent")
-  userId          String   @map("user_id") @db.Uuid
-  impersonatedBy  String?  @map("impersonated_by")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid()) @db.Uuid
+  expiresAt      DateTime @map("expires_at")
+  token          String   @unique
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  userId         String   @map("user_id") @db.Uuid
+  impersonatedBy String?  @map("impersonated_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

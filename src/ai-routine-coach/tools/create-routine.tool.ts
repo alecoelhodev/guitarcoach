@@ -98,7 +98,7 @@ export async function createRoutine(
       // eliminate) the partial-write window that the sequential addTask loop
       // below is exposed to.
       for (const taskId of new Set(taskIds)) {
-        await deps.tasksService.findById(taskId);
+        await deps.tasksService.findById(taskId, userId);
       }
 
       const routine = await deps.routinesService.create(userId, {

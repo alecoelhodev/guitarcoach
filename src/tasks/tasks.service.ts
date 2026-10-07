@@ -17,6 +17,7 @@ import {
   TaskResponseDto,
 } from './dto/task-response.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
+import { SHARED_TASKS } from './task-visibility';
 
 const PRISMA_ERROR_RECORD_NOT_FOUND = 'P2025';
 const PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT = 'P2003';
@@ -81,6 +82,7 @@ export class TasksService {
     }
 
     const where: Prisma.TaskWhereInput = {
+      ...SHARED_TASKS,
       ...(query.category !== undefined && { category: query.category }),
       ...(query.difficulty !== undefined && { difficulty: query.difficulty }),
       ...(query.q !== undefined && {
@@ -112,25 +114,38 @@ export class TasksService {
   // internal/tool-only listing (the task catalog is small), so a second
   // cache-key shape for one caller isn't worth it.
   findAllUnpaginated(): Promise<Task[]> {
-    return this.prisma.task.findMany({ orderBy: { createdAt: 'desc' } });
+    return this.prisma.task.findMany({
+      where: SHARED_TASKS,
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
-  async findById(id: string): Promise<TaskResponseDto> {
+  /**
+   * A shared task, or one of `userId`'s own private tasks. Omit `userId` only for admin and
+   * internal paths that may see every task.
+   */
+  async findById(id: string, userId?: string): Promise<TaskResponseDto> {
     const cacheKey = this.taskCacheKey(id);
-    const cached = await this.safeCacheGet<Task>(cacheKey);
-    if (cached) {
-      return cached;
+    let task: Task | null | undefined = await this.safeCacheGet<Task>(cacheKey);
+    if (!task) {
+      task = await this.prisma.task.findUnique({ where: { id } });
+      if (task) await this.safeCacheSet(cacheKey, task);
     }
 
-    const task = await this.prisma.task.findUnique({ where: { id } });
-
-    if (!task) {
+    // Checked after the cache, which is keyed by id alone.
+    if (!task || (userId && task.ownerId && task.ownerId !== userId)) {
       throw new NotFoundException(`Task with id "${id}" not found`);
     }
 
-    await this.safeCacheSet(cacheKey, task);
-
     return task;
+  }
+
+  /** A task only `userId` can see: the AI planner's tasks, kept out of the shared library. */
+  async createPrivate(
+    userId: string,
+    data: { title: string; description?: string },
+  ): Promise<TaskResponseDto> {
+    return this.prisma.task.create({ data: { ...data, ownerId: userId } });
   }
 
   async update(id: string, dto: UpdateTaskDto): Promise<TaskResponseDto> {
