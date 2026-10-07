@@ -34,4 +34,4 @@ Notes:
 
 ## Rate limit
 
-Every `/ai/*` endpoint shares one per-user window: `AI_RATE_LIMIT_PER_HOUR` requests (default 30) per hour, counted in Redis by `AiRateLimitGuard` (`src/ai-rate-limit/`). Past it the API answers `429` with `Retry-After` in seconds. It reuses the auth limiter's atomic `consume`, so it fails open if Redis is down.
+Every `/ai/*` endpoint (including the [task generator](ai-task-generator.md)) shares one per-user window: `AI_RATE_LIMIT_PER_HOUR` requests (default 30) per hour, counted in Redis by `AiRateLimitGuard` (`src/ai-rate-limit/`). Past it the API answers `429` with `Retry-After` in seconds. It reuses the auth limiter's atomic `consume`, so it fails open if Redis is down.

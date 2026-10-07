@@ -1,26 +1,25 @@
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import {
   BadRequestException,
-  GatewayTimeoutException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Cache } from 'cache-manager';
-import OpenAI from 'openai';
 import {
   assertValidPracticePlan,
   PracticePlan,
 } from './dto/practice-plan.schema';
 import { PracticePlannerRequestDto } from './dto/practice-planner-request.dto';
 import type { AiProvider } from './openai/ai-provider';
+import { callAiProvider } from './openai/call-ai-provider';
 import { AI_PROVIDER } from './openai/openai.constants';
 import { CreateRoutineTool } from './tools/create-routine.tool';
 import { CreateRoutineResult } from './tools/create-routine.types';
 
 const OWNERSHIP_CACHE_PREFIX = 'ai-practice-planner';
+const PLANNER_UNAVAILABLE = 'AI practice planner is temporarily unavailable';
 const PLAN_OWNERSHIP_TTL_MS = 15 * 60 * 1000;
 
 export type PracticePlannerResponse =
@@ -66,8 +65,9 @@ export class AiPracticePlannerService {
     userId: string,
     prompt: string,
   ): Promise<PracticePlannerResponse> {
-    const result = await this.callAiProvider(() =>
-      this.aiProvider.generatePracticePlan(prompt),
+    const result = await callAiProvider(
+      () => this.aiProvider.generatePracticePlan(prompt),
+      PLANNER_UNAVAILABLE,
     );
 
     assertValidPracticePlan(result.plan);
@@ -113,11 +113,13 @@ export class AiPracticePlannerService {
       throw new NotFoundException('Practice plan not found or expired');
     }
 
-    const result = await this.callAiProvider(() =>
-      this.aiProvider.confirmAndCreateRoutine(
-        dto.previousResponseId as string,
-        (rawArgs) => this.createRoutineTool.execute(userId, rawArgs),
-      ),
+    const result = await callAiProvider(
+      () =>
+        this.aiProvider.confirmAndCreateRoutine(
+          dto.previousResponseId as string,
+          (rawArgs) => this.createRoutineTool.execute(userId, rawArgs),
+        ),
+      PLANNER_UNAVAILABLE,
     );
 
     return { status: 'created', routine: result.toolResult };
@@ -145,34 +147,6 @@ export class AiPracticePlannerService {
         error,
       );
       return null;
-    }
-  }
-
-  private async callAiProvider<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (error) {
-      if (error instanceof OpenAI.APIConnectionTimeoutError) {
-        throw new GatewayTimeoutException('OpenAI request timed out');
-      }
-      if (
-        error instanceof OpenAI.RateLimitError ||
-        error instanceof OpenAI.InternalServerError
-      ) {
-        throw new ServiceUnavailableException(
-          'AI practice planner is temporarily unavailable',
-        );
-      }
-      // Covers APIConnectionError (and any other APIError subclass not
-      // handled above -- APIConnectionTimeoutError/RateLimitError/
-      // InternalServerError all extend APIError, so this is the safe
-      // fallback for the rest of the hierarchy).
-      if (error instanceof OpenAI.APIError) {
-        throw new ServiceUnavailableException(
-          'AI practice planner is temporarily unavailable',
-        );
-      }
-      throw error;
     }
   }
 }

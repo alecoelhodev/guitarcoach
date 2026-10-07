@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { Roles, Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
+import { BulkCreateTasksDto } from './dto/bulk-create-tasks.dto';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { FindTasksQueryDto } from './dto/find-tasks-query.dto';
 import {
@@ -30,6 +31,13 @@ export class TasksController {
   @Roles(['admin'])
   create(@Body() createTaskDto: CreateTaskDto): Promise<TaskResponseDto> {
     return this.tasksService.create(createTaskDto);
+  }
+
+  // The AI task generator's "Create N tasks": one round trip, all or nothing.
+  @Post('bulk')
+  @Roles(['admin'])
+  createMany(@Body() dto: BulkCreateTasksDto): Promise<TaskResponseDto[]> {
+    return this.tasksService.createMany(dto.tasks);
   }
 
   @Get()

@@ -1,4 +1,5 @@
 import { PracticePlan } from '../dto/practice-plan.schema';
+import { TaskDraftsWire } from '../dto/task-drafts.schema';
 import { CreateRoutineResult } from '../tools/create-routine.types';
 
 export interface GeneratedPracticePlan {
@@ -43,4 +44,13 @@ export interface AiProvider {
     previousResponseId: string,
     executeCreateRoutine: CreateRoutineExecutor,
   ): Promise<ConfirmedRoutineCreation>;
+
+  // Drafts `count` library tasks for an admin (web_search enabled, no tools that write).
+  // `existingTitles` steers the model away from duplicating the library. Callers
+  // normalise the result with normalizeTaskDrafts.
+  generateTaskDrafts(
+    prompt: string,
+    count: number,
+    existingTitles: string[],
+  ): Promise<TaskDraftsWire>;
 }

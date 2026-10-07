@@ -4,6 +4,8 @@ import { RoutinesModule } from '../routines/routines.module';
 import { TasksModule } from '../tasks/tasks.module';
 import { AiPracticePlannerController } from './ai-practice-planner.controller';
 import { AiPracticePlannerService } from './ai-practice-planner.service';
+import { AiTaskGeneratorController } from './ai-task-generator.controller';
+import { AiTaskGeneratorService } from './ai-task-generator.service';
 import {
   createOpenAiClient,
   OpenAiResponsesService,
@@ -13,9 +15,10 @@ import { CreateRoutineTool } from './tools/create-routine.tool';
 
 @Module({
   imports: [RoutinesModule, TasksModule],
-  controllers: [AiPracticePlannerController],
+  controllers: [AiPracticePlannerController, AiTaskGeneratorController],
   providers: [
     AiPracticePlannerService,
+    AiTaskGeneratorService,
     CreateRoutineTool,
     {
       provide: OPENAI_CLIENT,

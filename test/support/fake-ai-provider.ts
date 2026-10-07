@@ -6,6 +6,7 @@ import {
   GeneratedPracticePlan,
 } from '../../src/ai-practice-planner/openai/ai-provider';
 import { PracticePlan } from '../../src/ai-practice-planner/dto/practice-plan.schema';
+import { TaskDraftsWire } from '../../src/ai-practice-planner/dto/task-drafts.schema';
 
 /**
  * In-memory stand-in for OpenAiResponsesService, following the same
@@ -40,6 +41,32 @@ export class FakeAiProvider implements AiProvider {
     ],
     requiresConfirmation: true,
   };
+
+  /** What `generateTaskDrafts` returns; it repeats this draft `count` times, numbered. */
+  nextDraft: TaskDraftsWire['tasks'][number] = {
+    title: 'Learn the main riff',
+    description: 'Bars 1-8 at 60% tempo, then build up.',
+    category: 'repertoire',
+    difficulty: 'medium',
+    referenceLink: 'https://example.com/lesson',
+  };
+
+  /** The last call's library titles, so a spec can assert what the model was told. */
+  lastExistingTitles: string[] = [];
+
+  generateTaskDrafts(
+    _prompt: string,
+    count: number,
+    existingTitles: string[],
+  ): Promise<TaskDraftsWire> {
+    this.lastExistingTitles = existingTitles;
+    return Promise.resolve({
+      tasks: Array.from({ length: count }, (_, index) => ({
+        ...this.nextDraft,
+        title: `${this.nextDraft.title} ${index + 1}`,
+      })),
+    });
+  }
 
   generatePracticePlan(): Promise<GeneratedPracticePlan> {
     return Promise.resolve({

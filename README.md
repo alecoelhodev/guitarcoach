@@ -67,6 +67,7 @@ This file covers architecture, data model, and local setup. Full endpoint walkth
 - [Practice recordings](docs/practice-recordings.md) — practice sessions and audio recording upload/download
 - [AI Practice Planner](docs/ai-practice-planner.md) — confirmation-gated AI routine planning
 - [AI Routine Coach](docs/ai-routine-coach.md) — no-confirmation AI routine agent and its tools/guardrail
+- [AI Task Generator](docs/ai-task-generator.md) — admin-only drafting of library tasks, plus bulk create
 - [Weekly routine cleanup job](docs/weekly-routine-cleanup.md) — standalone Cloud Run Job setup and selection rules
 - [Continuous deployment](docs/deployment.md) — CI/CD pipeline, one-time GCP setup, rollback
 - [API contract](docs/api-contract.md) — the committed `openapi.json`, response-DTO conventions, and how a frontend stays in sync

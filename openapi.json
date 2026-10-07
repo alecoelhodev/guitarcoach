@@ -662,6 +662,40 @@
         ]
       }
     },
+    "/api/v1/tasks/bulk": {
+      "post": {
+        "operationId": "TasksController_createMany",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCreateTasksDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
     "/api/v1/tasks/{id}": {
       "get": {
         "operationId": "TasksController_findOne",
@@ -1398,6 +1432,37 @@
         ]
       }
     },
+    "/api/v1/ai/task-generator": {
+      "post": {
+        "operationId": "AiTaskGeneratorController_generate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskGeneratorRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskGeneratorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "AiTaskGenerator"
+        ]
+      }
+    },
     "/api/v1/ai/routine-coach": {
       "post": {
         "operationId": "AiRoutineCoachController_handle",
@@ -1644,6 +1709,22 @@
           "title",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "BulkCreateTasksDto": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateTaskDto"
+            }
+          }
+        },
+        "required": [
+          "tasks"
         ]
       },
       "PaginationMetaDto": {
@@ -2305,6 +2386,77 @@
             "type": "string"
           }
         }
+      },
+      "TaskGeneratorRequestDto": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "count": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "prompt",
+          "count"
+        ]
+      },
+      "TaskDraftDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "enum": [
+              "technique",
+              "theory",
+              "repertoire"
+            ],
+            "type": "string"
+          },
+          "difficulty": {
+            "enum": [
+              "easy",
+              "medium",
+              "hard"
+            ],
+            "type": "string"
+          },
+          "referenceLink": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "difficulty",
+          "referenceLink",
+          "title",
+          "description"
+        ]
+      },
+      "TaskGeneratorResponseDto": {
+        "type": "object",
+        "properties": {
+          "drafts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskDraftDto"
+            }
+          }
+        },
+        "required": [
+          "drafts"
+        ]
       },
       "RoutineCoachRequestDto": {
         "type": "object",
