@@ -176,6 +176,29 @@ describe('AiPracticePlannerController (e2e)', () => {
       }).expect(400);
     });
 
+    it('caps each user at 30 AI requests an hour, with Retry-After', async () => {
+      const user = await seedUser();
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+
+      for (let i = 0; i < 30; i += 1) {
+        await requestPlan(user.id, { prompt: 'A 30 minute warm-up.' }).expect(
+          201,
+        );
+      }
+      const limited = await requestPlan(user.id, {
+        prompt: 'A 30 minute warm-up.',
+      }).expect(429);
+      expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+
+      // The window is per user.
+      await requestPlan(other.id, { prompt: 'A 30 minute warm-up.' }).expect(
+        201,
+      );
+    });
+
     it('rejects an unauthenticated request', async () => {
       await requestAs(app)
         .post('/api/v1/ai/practice-planner')

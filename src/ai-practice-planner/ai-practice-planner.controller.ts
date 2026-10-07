@@ -1,7 +1,8 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { ApiExtraModels, ApiResponse, getSchemaPath } from '@nestjs/swagger';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
+import { AiRateLimitGuard } from '../ai-rate-limit/ai-rate-limit.guard';
 import {
   AiPracticePlannerService,
   PracticePlannerResponse,
@@ -14,6 +15,7 @@ import {
 } from './dto/practice-planner-response.dto';
 
 @Controller('ai/practice-planner')
+@UseGuards(AiRateLimitGuard)
 @ApiExtraModels(
   AwaitingConfirmationResponseDto,
   PlanCreatedResponseDto,

@@ -6,6 +6,7 @@ import {
   PracticePlannerResponse,
 } from './ai-practice-planner.service';
 import { PracticePlannerRequestDto } from './dto/practice-planner-request.dto';
+import { AiRateLimitGuard } from '../ai-rate-limit/ai-rate-limit.guard';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
 
@@ -23,7 +24,11 @@ describe('AiPracticePlannerController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiPracticePlannerController],
       providers: [{ provide: AiPracticePlannerService, useValue: service }],
-    }).compile();
+    })
+      // The rate limit has its own spec; here it would need Redis and config.
+      .overrideGuard(AiRateLimitGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<AiPracticePlannerController>(
       AiPracticePlannerController,

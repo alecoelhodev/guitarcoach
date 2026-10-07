@@ -20,6 +20,7 @@ import { FakeAiProvider } from './fake-ai-provider';
 import { FakeAuthGuard } from './fake-auth.guard';
 import { FakeGcpStorageService } from './fake-gcp-storage.service';
 import { FakeRoutineEventsClient } from './fake-routine-events-client';
+import { RedisRateLimitStorageModule } from '../../src/auth/redis-rate-limit-storage.module';
 
 /**
  * Builds the same controller/service/Prisma wiring as AppModule, but swaps
@@ -63,6 +64,8 @@ export async function buildTestApp(): Promise<INestApplication<App>> {
       PrismaModule,
       GcpStorageModule,
       RedisLockModule,
+      // Real Redis, like the reorder lock: the AI rate limit counts in it.
+      RedisRateLimitStorageModule,
       UsersModule,
       TasksModule,
       RoutinesModule,

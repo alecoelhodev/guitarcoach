@@ -30,3 +30,7 @@ Notes:
 - OpenAI's built-in `web_search` tool is available to the model but optional — it's only used when the model decides external information would improve the plan, not on every request.
 - The plan is validated twice before anything is written: once by the Responses API's Structured Outputs schema, and again by application code (at least one task, positive durations, task durations reasonably summing to the requested total) — model output is never trusted blindly.
 - OpenAI timeouts/outages map to `504`/`503` and never affect any other endpoint; a malformed or unexpected model response maps to `502`.
+
+## Rate limit
+
+Every `/ai/*` endpoint shares one per-user window: `AI_RATE_LIMIT_PER_HOUR` requests (default 30) per hour, counted in Redis by `AiRateLimitGuard` (`src/ai-rate-limit/`). Past it the API answers `429` with `Retry-After` in seconds. It reuses the auth limiter's atomic `consume`, so it fails open if Redis is down.
