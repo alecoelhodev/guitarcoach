@@ -217,4 +217,107 @@ describe('UsersController (e2e)', () => {
       await requestAs(app).delete('/api/v1/users/me').expect(401);
     });
   });
+
+  describe('/api/v1/users/me/avatar', () => {
+    const PNG = Buffer.from('fake-png-bytes');
+
+    const setup = async () => {
+      const user = await seedUser();
+      const storage: FakeGcpStorageService = app.get(GcpStorageService);
+      const asMe = () => requestAs(app, 'user', user.id);
+      const imageOf = async () =>
+        (await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).image;
+      return { user, storage, asMe, imageOf };
+    };
+
+    it('uploads, signs, replaces and removes the photo', async () => {
+      const { user, storage, asMe, imageOf } = await setup();
+
+      const first = await asMe()
+        .put('/api/v1/users/me/avatar')
+        .attach('file', PNG, { filename: 'me.png', contentType: 'image/png' })
+        .expect(200);
+      const firstObject = await imageOf();
+      expect(firstObject).toMatch(
+        new RegExp(`^users/${user.id}/avatar/[0-9a-f-]+\\.png$`),
+      );
+      expect(storage.objects.has(firstObject!)).toBe(true);
+      expect((first.body as { url: string }).url).toContain(firstObject);
+
+      const fetched = await asMe().get('/api/v1/users/me/avatar').expect(200);
+      expect((fetched.body as { url: string }).url).toContain(firstObject);
+
+      await asMe()
+        .put('/api/v1/users/me/avatar')
+        .attach('file', PNG, { filename: 'me.jpg', contentType: 'image/jpeg' })
+        .expect(200);
+      const secondObject = await imageOf();
+      expect(secondObject).toMatch(/\.jpg$/);
+      expect(storage.objects.has(firstObject!)).toBe(false);
+      expect(storage.objects.has(secondObject!)).toBe(true);
+
+      await asMe().delete('/api/v1/users/me/avatar').expect(204);
+      expect(await imageOf()).toBeNull();
+      expect(storage.objects.has(secondObject!)).toBe(false);
+      await asMe().get('/api/v1/users/me/avatar').expect(404);
+    });
+
+    it('rejects a file that is not a JPEG, PNG or WebP image', async () => {
+      const { asMe, imageOf } = await setup();
+
+      await asMe()
+        .put('/api/v1/users/me/avatar')
+        .attach('file', Buffer.from('gif'), {
+          filename: 'me.gif',
+          contentType: 'image/gif',
+        })
+        .expect(400);
+      expect(await imageOf()).toBeNull();
+    });
+
+    it('rejects a file over 2 MB', async () => {
+      const { asMe } = await setup();
+
+      await asMe()
+        .put('/api/v1/users/me/avatar')
+        .attach('file', Buffer.alloc(2 * 1024 * 1024 + 1), {
+          filename: 'me.png',
+          contentType: 'image/png',
+        })
+        .expect(413);
+    });
+
+    it('rejects a request with no file', async () => {
+      const { asMe } = await setup();
+
+      await asMe().put('/api/v1/users/me/avatar').expect(400);
+    });
+
+    it("never signs an image value that names another user's object", async () => {
+      const { user, asMe } = await setup();
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { image: 'users/someone-else/avatar/theirs.png' },
+      });
+
+      await asMe().get('/api/v1/users/me/avatar').expect(404);
+    });
+
+    it('deletes the photo object with the account', async () => {
+      const { storage, asMe, imageOf } = await setup();
+      await asMe()
+        .put('/api/v1/users/me/avatar')
+        .attach('file', PNG, { filename: 'me.png', contentType: 'image/png' })
+        .expect(200);
+      const objectName = await imageOf();
+
+      await asMe().delete('/api/v1/users/me').expect(204);
+
+      expect(storage.objects.has(objectName!)).toBe(false);
+    });
+
+    it('returns 401 without a session', async () => {
+      await requestAs(app).get('/api/v1/users/me/avatar').expect(401);
+    });
+  });
 });

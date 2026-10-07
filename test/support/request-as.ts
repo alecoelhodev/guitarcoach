@@ -25,6 +25,7 @@ export function requestAs(
   return {
     get: (url: string) => withRole(agent.get(url)),
     post: (url: string) => withRole(agent.post(url)),
+    put: (url: string) => withRole(agent.put(url)),
     patch: (url: string) => withRole(agent.patch(url)),
     delete: (url: string) => withRole(agent.delete(url)),
   };

@@ -7,6 +7,7 @@ import {
 import { GcpStorageService } from '../gcp-storage/gcp-storage.service';
 import { Prisma } from '../generated/prisma/client';
 import { SecurityEventLogger } from '../observability/security-event.logger';
+import { ownAvatarObject } from './avatar.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -103,14 +104,14 @@ export class UsersService {
   /**
    * Deletes a user and everything they own. Routine, PracticeSession and
    * Recording FKs are Restrict, so children go first; Session and Account
-   * cascade. Storage objects are removed only after the commit, so a GCS
+   * cascade. Storage objects (recordings and the avatar) are removed only after the commit, so a GCS
    * failure can never leave a half-deleted account.
    */
   private async purge(userId: string): Promise<void> {
     const objectNames = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({
         where: { id: userId },
-        select: { id: true },
+        select: { image: true },
       });
       if (!user) {
         throw new NotFoundException(`User with id "${userId}" not found`);
@@ -130,7 +131,11 @@ export class UsersService {
       await tx.routine.deleteMany({ where: { userId } });
       await tx.user.delete({ where: { id: userId } });
 
-      return recordings.map((r) => r.objectName);
+      const avatar = ownAvatarObject(userId, user.image);
+      return [
+        ...recordings.map((r) => r.objectName),
+        ...(avatar ? [avatar] : []),
+      ];
     });
 
     await this.deleteObjects(userId, objectNames);
@@ -148,7 +153,7 @@ export class UsersService {
       results.forEach((result, j) => {
         if (result.status === 'rejected') {
           this.logger.error(
-            `Orphaned recording object "${batch[j]}" after deleting user "${userId}"`,
+            `Orphaned storage object "${batch[j]}" after deleting user "${userId}"`,
             result.reason,
           );
         }

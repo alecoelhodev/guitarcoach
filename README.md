@@ -41,7 +41,7 @@ The project is a standard NestJS application (Express platform) organized by fea
 - **`config`** — loads and validates environment variables at startup using [Zod](https://zod.dev/) (`src/config/env.validation.ts`), exposed globally via `AppConfigModule`.
 - **`health`** — Kubernetes/Docker-style liveness and readiness probes via [`@nestjs/terminus`](https://docs.nestjs.com/recipes/terminus).
 - **`auth`** — email/password authentication via [Better Auth](https://www.better-auth.com/), mounted through [`@thallesp/nestjs-better-auth`](https://github.com/ThallesP/nestjs-better-auth) (see [Authentication](#authentication)).
-- **`users`** — CRUD user management backed by Postgres via Prisma (see [Architecture decisions](#architecture-decisions)).
+- **`users`** — CRUD user management backed by Postgres via Prisma, plus self-service account deletion and a profile photo (`/users/me/avatar`, see [`docs/authentication.md`](docs/authentication.md)) (see [Architecture decisions](#architecture-decisions)).
 - **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination, filtering by `category`/`difficulty` and a case-insensitive title search (`q`), Redis-cached reads (see [Data model](#data-model)).
 - **`routines`** — user-owned, ordered lists of tasks with per-task target durations; supports reordering under a Redis distributed lock, and publishes a `routine.created` event to RabbitMQ (see [Routines](#routines)).
 - **`practice-sessions`** — user practice logs with attached audio recordings uploaded to Google Cloud Storage (see [Practice recordings](#practice-recordings)).
