@@ -31,3 +31,7 @@ Notes:
 - The plan is validated twice before anything is written: once by the Responses API's Structured Outputs schema, and again by application code (at least one task, positive durations, task durations reasonably summing to the requested total) — model output is never trusted blindly.
 - **The plan's tasks are private to the user who confirmed it.** They are created with `Task.ownerId` set to that user, so they appear in that user's routine but never in the shared library (`GET /tasks`), never in the routine coach's catalog, and never for another user (`GET /tasks/:id`, adding to a routine, or logging in a session all return `404`). The planner runs for any signed-in user, while the shared library is admin-curated (`POST /tasks` is admin-only). Deleting the account deletes these tasks too.
 - OpenAI timeouts/outages map to `504`/`503` and never affect any other endpoint; a malformed or unexpected model response maps to `502`.
+
+## Rate limit
+
+Every `/ai/*` endpoint shares one per-user window: `AI_RATE_LIMIT_PER_HOUR` requests (default 30) per hour, counted in Redis by `AiRateLimitGuard` (`src/ai-rate-limit/`). Past it the API answers `429` with `Retry-After` in seconds. It reuses the auth limiter's atomic `consume`, so it fails open if Redis is down.

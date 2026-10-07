@@ -55,6 +55,8 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1),
   OPENAI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  // Per user, across every /ai/* endpoint; each call is a paid OpenAI request.
+  AI_RATE_LIMIT_PER_HOUR: z.coerce.number().int().positive().default(30),
   HEALTH_MEMORY_HEAP_THRESHOLD_BYTES: z.coerce
     .number()
     .int()

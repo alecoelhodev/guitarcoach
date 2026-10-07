@@ -3,6 +3,7 @@ import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { AiRoutineCoachController } from './ai-routine-coach.controller';
 import { AiRoutineCoachService } from './ai-routine-coach.service';
 import { RoutineCoachRequestDto } from './dto/routine-coach-request.dto';
+import { AiRateLimitGuard } from '../ai-rate-limit/ai-rate-limit.guard';
 
 const USER_ID = 'a3f1c2d4-2222-4b2a-9c3d-000000000000';
 
@@ -20,7 +21,11 @@ describe('AiRoutineCoachController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiRoutineCoachController],
       providers: [{ provide: AiRoutineCoachService, useValue: service }],
-    }).compile();
+    })
+      // The rate limit has its own spec; here it would need Redis and config.
+      .overrideGuard(AiRateLimitGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<AiRoutineCoachController>(AiRoutineCoachController);
   });

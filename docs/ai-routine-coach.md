@@ -28,3 +28,7 @@ Notes:
 - **The LLM never touches Prisma, decides authorization, or is trusted about whether a write succeeded.** `create_routine`'s arguments (existing task IDs, a duration, and an order per task) are independently re-validated in application code — every task ID must exist, durations and the routine total must be within a fixed cap, orders must be exactly `1..N` with no gaps or duplicates — before `RoutinesService.create`/`addTask` are called. The response's `routineId` is read from a side-channel the tool sets only after that write actually succeeds, never parsed out of the model's own text, so the model claiming success and a routine actually existing can't drift apart.
 - Max turns is capped (8) to bound runaway tool-calling loops; hitting the cap maps to `502`, same bucket as a malformed OpenAI response. Malformed tool-call arguments from the model map to `400`; an unhandled failure inside a tool (e.g. an unexpected database error while reading practice history) maps to `502` without leaking the underlying cause.
 - `Task` has no per-user ownership in this schema (it's a shared, admin-managed catalog) — `get_user_tasks` returns the same catalog to every user; "task not found" is the only way an invalid task ID can fail.
+
+## Rate limit
+
+Every `/ai/*` endpoint shares one per-user window: `AI_RATE_LIMIT_PER_HOUR` requests (default 30) per hour, counted in Redis by `AiRateLimitGuard` (`src/ai-rate-limit/`). Past it the API answers `429` with `Retry-After` in seconds. It reuses the auth limiter's atomic `consume`, so it fails open if Redis is down.

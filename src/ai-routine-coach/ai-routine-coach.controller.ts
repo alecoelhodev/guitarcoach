@@ -1,11 +1,13 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { Session } from '@thallesp/nestjs-better-auth';
 import type { UserSession } from '@thallesp/nestjs-better-auth';
+import { AiRateLimitGuard } from '../ai-rate-limit/ai-rate-limit.guard';
 import { AiRoutineCoachService } from './ai-routine-coach.service';
 import { RoutineCoachRequestDto } from './dto/routine-coach-request.dto';
 import { RoutineCoachResponseDto } from './dto/routine-coach-response.dto';
 
 @Controller('ai/routine-coach')
+@UseGuards(AiRateLimitGuard)
 export class AiRoutineCoachController {
   constructor(private readonly service: AiRoutineCoachService) {}
 
