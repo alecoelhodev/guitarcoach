@@ -34,10 +34,31 @@ curl -i -b cookies.txt http://localhost:3000/api/v1/users/me
 `DELETE /api/v1/users/me` (any signed-in user, `204`) is the in-app account deletion both app stores
 require. `UsersService.purge` deletes everything the user owns, children first, in one transaction:
 recordings, session tasks, sessions, routine tasks, routines, then the user. Better Auth's sessions
-and accounts cascade. The recording objects in GCS are deleted only after the commit, so a storage
+and accounts cascade. The recording objects and the profile photo in GCS are deleted only after the commit, so a storage
 failure can't leave a half-deleted account: it is logged as an orphaned object and the request still
 succeeds. The admin `DELETE /api/v1/users/:id` uses the same purge. Better Auth's own
 `/auth/delete-user` stays disabled, because it would bypass this ordering and the storage cleanup.
+
+## Profile photo
+
+Any signed-in user can set one photo. `User.image` (Better Auth's own column) holds the **GCS
+object name**, `users/{userId}/avatar/{uuid}.{jpg|png|webp}`, never a URL.
+
+| Route                            | Result                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `PUT /api/v1/users/me/avatar`    | Multipart `file`: JPEG, PNG or WebP, max 2 MB (`400` / `413`). `{ url }` |
+| `GET /api/v1/users/me/avatar`    | `{ url }`, signed for `RECORDING_DOWNLOAD_URL_EXPIRY_SECONDS`, or `404`  |
+| `DELETE /api/v1/users/me/avatar` | `204`; clears the column, then deletes the object. `404` if none is set  |
+
+- **The column is not trusted.** Better Auth's `/auth/update-user` lets a client write `image`, so
+  `ownAvatarObject` (`src/users/avatar.service.ts`) only accepts a value under the caller's own
+  avatar prefix. Anything else is treated as no photo: never signed, never deleted.
+- **A replace is compare-and-swap.** The new object is uploaded, then `image` is updated only if it
+  still holds the value read before the upload. A concurrent upload that won gets `409` and its
+  object removed, instead of orphaning the winner's. The previous object is deleted after the
+  write, best effort and logged.
+- `get-session` returns the raw object name in `user.image`; clients treat it as "a photo is set"
+  and fetch the URL from `GET /users/me/avatar`.
 
 ## Browser clients & CORS
 

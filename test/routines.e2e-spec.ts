@@ -52,6 +52,7 @@ describe('RoutinesController (e2e)', () => {
 
     prisma = app.get(PrismaService);
     await prisma.recording.deleteMany();
+    await prisma.practiceSessionTask.deleteMany();
     await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
     await prisma.routine.deleteMany();

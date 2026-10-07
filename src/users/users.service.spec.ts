@@ -248,6 +248,32 @@ describe('UsersService', () => {
       });
     });
 
+    it('deletes the user’s avatar object along with the recordings', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        buildUser({ image: 'users/u/avatar/a.jpg' }),
+      );
+      prisma.recording.findMany.mockResolvedValue([
+        { objectName: 'users/u/r' },
+      ]);
+
+      await service.deleteAccount('u');
+
+      expect(gcpStorage.deleteObject.mock.calls).toEqual([
+        ['users/u/r'],
+        ['users/u/avatar/a.jpg'],
+      ]);
+    });
+
+    it('leaves an image outside the user’s avatar prefix untouched', async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        buildUser({ image: 'users/someone-else/avatar/a.jpg' }),
+      );
+
+      await service.deleteAccount('u');
+
+      expect(gcpStorage.deleteObject).not.toHaveBeenCalled();
+    });
+
     it('touches no storage when the transaction fails', async () => {
       prisma.user.findUnique.mockResolvedValue(buildUser());
       prisma.recording.findMany.mockResolvedValue([{ objectName: 'x' }]);

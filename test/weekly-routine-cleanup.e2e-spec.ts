@@ -25,6 +25,8 @@ describe('WeeklyRoutineCleanupService (e2e)', () => {
     service = moduleRef.get(WeeklyRoutineCleanupService);
 
     await prisma.recording.deleteMany();
+
+    await prisma.practiceSessionTask.deleteMany();
     await prisma.practiceSession.deleteMany();
     await prisma.routineTask.deleteMany();
     await prisma.routine.deleteMany();
