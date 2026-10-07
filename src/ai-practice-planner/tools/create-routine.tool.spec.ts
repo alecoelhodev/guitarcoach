@@ -73,7 +73,7 @@ type MockRoutinesService = {
 };
 
 type MockTasksService = {
-  create: jest.Mock;
+  createPrivate: jest.Mock;
 };
 
 describe('CreateRoutineTool', () => {
@@ -87,7 +87,7 @@ describe('CreateRoutineTool', () => {
       addTask: jest.fn(),
     };
     tasksService = {
-      create: jest.fn(),
+      createPrivate: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -107,7 +107,7 @@ describe('CreateRoutineTool', () => {
       routinesService.create.mockResolvedValue(routine);
       const createdTask1 = buildTask({ id: 'task-1' });
       const createdTask2 = buildTask({ id: 'task-2', title: 'Scale practice' });
-      tasksService.create
+      tasksService.createPrivate
         .mockResolvedValueOnce(createdTask1)
         .mockResolvedValueOnce(createdTask2);
       routinesService.addTask
@@ -126,11 +126,11 @@ describe('CreateRoutineTool', () => {
         notes: 'Focus on timing',
       });
 
-      expect(tasksService.create).toHaveBeenNthCalledWith(1, {
+      expect(tasksService.createPrivate).toHaveBeenNthCalledWith(1, USER_ID, {
         title: 'Chromatic warm-up',
         description: 'Slow chromatic runs across the fretboard',
       });
-      expect(tasksService.create).toHaveBeenNthCalledWith(2, {
+      expect(tasksService.createPrivate).toHaveBeenNthCalledWith(2, USER_ID, {
         title: 'Scale practice',
         description: 'Major scale in three positions',
       });
@@ -166,7 +166,7 @@ describe('CreateRoutineTool', () => {
     it('assigns sequential positions 1..N for three tasks', async () => {
       const routine = buildRoutine();
       routinesService.create.mockResolvedValue(routine);
-      tasksService.create
+      tasksService.createPrivate
         .mockResolvedValueOnce(buildTask({ id: 't1' }))
         .mockResolvedValueOnce(buildTask({ id: 't2' }))
         .mockResolvedValueOnce(buildTask({ id: 't3' }));
@@ -258,7 +258,7 @@ describe('CreateRoutineTool', () => {
     it('ignores a userId field present in rawArgs and always uses the injected userId', async () => {
       const routine = buildRoutine();
       routinesService.create.mockResolvedValue(routine);
-      tasksService.create.mockResolvedValue(buildTask());
+      tasksService.createPrivate.mockResolvedValue(buildTask());
       routinesService.addTask.mockResolvedValue(buildRoutineTask());
 
       const argsWithAttackerUserId = {
@@ -289,13 +289,15 @@ describe('CreateRoutineTool', () => {
       await expect(tool.execute(USER_ID, buildValidArgs())).rejects.toThrow(
         'db unavailable',
       );
-      expect(tasksService.create).not.toHaveBeenCalled();
+      expect(tasksService.createPrivate).not.toHaveBeenCalled();
     });
 
     it('propagates an error thrown by TasksService.create', async () => {
       const routine = buildRoutine();
       routinesService.create.mockResolvedValue(routine);
-      tasksService.create.mockRejectedValue(new Error('task creation failed'));
+      tasksService.createPrivate.mockRejectedValue(
+        new Error('task creation failed'),
+      );
 
       await expect(tool.execute(USER_ID, buildValidArgs())).rejects.toThrow(
         'task creation failed',

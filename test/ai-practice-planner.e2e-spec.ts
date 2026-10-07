@@ -124,6 +124,53 @@ describe('AiPracticePlannerController (e2e)', () => {
       await expect(prisma.task.count()).resolves.toBe(plan.tasks.length);
     });
 
+    it("keeps the plan's tasks private to its user, out of the shared library", async () => {
+      const user = await seedUser();
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const planResponse = await requestPlan(user.id, {
+        prompt: 'Create me a 30 minute warm-up routine.',
+      }).expect(201);
+      const { previousResponseId } =
+        planResponse.body as AwaitingConfirmationBody;
+      await requestPlan(user.id, {
+        confirmation: true,
+        previousResponseId,
+      }).expect(201);
+
+      const created = await prisma.task.findMany();
+      expect(created.length).toBeGreaterThan(0);
+      expect(created.every((task) => task.ownerId === user.id)).toBe(true);
+      const privateId = created[0].id;
+
+      // Not listed in the library for anyone, owner included.
+      const list = await asUser(user.id).get('/api/v1/tasks').expect(200);
+      expect((list.body as { data: unknown[] }).data).toHaveLength(0);
+
+      // Readable by the owner (their routine links to it), missing for others.
+      await asUser(user.id).get(`/api/v1/tasks/${privateId}`).expect(200);
+      await asUser(other.id).get(`/api/v1/tasks/${privateId}`).expect(404);
+
+      // Another user cannot pull it into their own routine or log it.
+      const theirs = await prisma.routine.create({
+        data: { userId: other.id, title: 'Mine' },
+      });
+      await asUser(other.id)
+        .post(`/api/v1/routines/${theirs.id}/tasks`)
+        .send({ taskId: privateId })
+        .expect(404);
+      await asUser(other.id)
+        .post('/api/v1/practice-sessions')
+        .send({ tasks: [{ taskId: privateId }] })
+        .expect(404);
+
+      // Deleting the owner's account takes the private tasks with it.
+      await asUser(user.id).delete('/api/v1/users/me').expect(204);
+      await expect(prisma.task.count()).resolves.toBe(0);
+    });
+
     it('persists nothing when the user declines the plan', async () => {
       const user = await seedUser();
 

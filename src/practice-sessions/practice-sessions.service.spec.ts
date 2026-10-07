@@ -58,6 +58,7 @@ type MockPrismaService = {
 
 type MockRoutinesService = {
   findById: jest.Mock;
+  assertTasksVisible: jest.Mock;
 };
 
 describe('PracticeSessionsService', () => {
@@ -87,6 +88,7 @@ describe('PracticeSessionsService', () => {
     };
     routinesService = {
       findById: jest.fn(),
+      assertTasksVisible: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -182,6 +184,20 @@ describe('PracticeSessionsService', () => {
       await expect(
         service.create(USER_ID, { tasks: [{ taskId: 'missing-task' }] }),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('checks the logged tasks are visible to the user before writing', async () => {
+      routinesService.assertTasksVisible.mockRejectedValue(
+        new NotFoundException('One or more tasks were not found'),
+      );
+
+      await expect(
+        service.create(USER_ID, { tasks: [{ taskId: 'private-task' }] }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(routinesService.assertTasksVisible).toHaveBeenCalledWith(USER_ID, [
+        'private-task',
+      ]);
+      expect(prisma.practiceSession.create).not.toHaveBeenCalled();
     });
 
     it('rethrows unexpected errors from the create call', async () => {
