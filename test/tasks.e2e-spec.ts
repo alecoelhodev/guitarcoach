@@ -168,6 +168,63 @@ describe('TasksController (e2e)', () => {
       expect(body.data[0]).toMatchObject({ difficulty: 'hard' });
     });
 
+    it('searches titles case-insensitively, combined with the other filters', async () => {
+      await createTask({
+        title: 'Minor Pentatonic run',
+        category: 'technique',
+        difficulty: 'easy',
+      }).expect(201);
+      await createTask({
+        title: 'Pentatonic theory',
+        category: 'theory',
+        difficulty: 'easy',
+      }).expect(201);
+      await createTask({
+        title: 'Blues shuffle',
+        category: 'technique',
+        difficulty: 'easy',
+      }).expect(201);
+
+      const all = await admin().get('/api/v1/tasks?q=PENTA').expect(200);
+      expect((all.body as PaginatedTasksResponseBody).data).toHaveLength(2);
+
+      const combined = await admin()
+        .get('/api/v1/tasks?q=penta&category=technique')
+        .expect(200);
+      const body = combined.body as PaginatedTasksResponseBody;
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0]).toMatchObject({ title: 'Minor Pentatonic run' });
+    });
+
+    it('matches % and _ literally rather than as wildcards', async () => {
+      await createTask({
+        title: '100% alternate picking',
+        category: 'technique',
+        difficulty: 'easy',
+      }).expect(201);
+      await createTask({
+        title: 'Legato drills',
+        category: 'technique',
+        difficulty: 'easy',
+      }).expect(201);
+
+      const percent = await admin()
+        .get(`/api/v1/tasks?q=${encodeURIComponent('%')}`)
+        .expect(200);
+      expect((percent.body as PaginatedTasksResponseBody).data).toHaveLength(1);
+
+      const underscore = await admin().get('/api/v1/tasks?q=_').expect(200);
+      expect((underscore.body as PaginatedTasksResponseBody).data).toHaveLength(
+        0,
+      );
+    });
+
+    it('rejects a search longer than 100 characters', async () => {
+      await admin()
+        .get(`/api/v1/tasks?q=${'a'.repeat(101)}`)
+        .expect(400);
+    });
+
     it('paginates results', async () => {
       for (let i = 0; i < 3; i += 1) {
         await createTask({

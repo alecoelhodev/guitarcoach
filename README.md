@@ -42,7 +42,7 @@ The project is a standard NestJS application (Express platform) organized by fea
 - **`health`** — Kubernetes/Docker-style liveness and readiness probes via [`@nestjs/terminus`](https://docs.nestjs.com/recipes/terminus).
 - **`auth`** — email/password authentication via [Better Auth](https://www.better-auth.com/), mounted through [`@thallesp/nestjs-better-auth`](https://github.com/ThallesP/nestjs-better-auth) (see [Authentication](#authentication)).
 - **`users`** — CRUD user management backed by Postgres via Prisma (see [Architecture decisions](#architecture-decisions)).
-- **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination and filtering by `category`/`difficulty`, Redis-cached reads (see [Data model](#data-model)).
+- **`tasks`** — CRUD task-library management backed by Postgres via Prisma, with pagination, filtering by `category`/`difficulty` and a case-insensitive title search (`q`), Redis-cached reads (see [Data model](#data-model)).
 - **`routines`** — user-owned, ordered lists of tasks with per-task target durations; supports reordering under a Redis distributed lock, and publishes a `routine.created` event to RabbitMQ (see [Routines](#routines)).
 - **`practice-sessions`** — user practice logs with attached audio recordings uploaded to Google Cloud Storage (see [Practice recordings](#practice-recordings)).
 - **`ai-practice-planner`** — generates a structured practice-routine plan from a natural-language prompt via the OpenAI Responses API, then persists it through the existing `routines`/`tasks` services once the user explicitly confirms (see [AI Practice Planner](#ai-practice-planner)).
@@ -116,7 +116,7 @@ For a request-by-request walkthrough of these mechanisms — authentication, a c
 ## User flow
 
 1. **Sign up / sign in** — email + password via Better Auth, session cookie issued (see [Authentication](#authentication)).
-2. **Browse the task library** — `GET /tasks`, optionally filtered by `category`/`difficulty` (see [Data model](#data-model)).
+2. **Browse the task library** — `GET /tasks`, optionally filtered by `category`/`difficulty` and searched by title with `q` (see [Data model](#data-model)).
 3. **Build a routine** — create a routine and attach tasks to it in order, with optional per-task target durations; reorder as needed (see [Routines](#routines)). Or describe what you want in natural language: the **AI Practice Planner** drafts a plan you must explicitly confirm before anything is saved (see [AI Practice Planner](#ai-practice-planner)), while the **AI Routine Coach** inspects your recent practice history itself and creates the routine directly, no confirmation step (see [AI Routine Coach](#ai-routine-coach)).
 4. **Log a practice session** — create a practice session, optionally against a routine you followed and with the specific tasks you actually practiced (see [Practice recordings](#practice-recordings)).
 5. **Upload a recording** — attach an audio recording of that session to Google Cloud Storage.

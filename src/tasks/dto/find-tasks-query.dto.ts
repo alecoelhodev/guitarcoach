@@ -1,5 +1,13 @@
 import { Transform, Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Length,
+  Max,
+  Min,
+} from 'class-validator';
 import { TaskCategory, TaskDifficulty } from '../../generated/prisma/enums';
 
 const trim = ({ value }: { value: unknown }): unknown =>
@@ -28,4 +36,11 @@ export class FindTasksQueryDto {
   @Transform(trim)
   @IsEnum(TaskDifficulty)
   difficulty?: TaskDifficulty;
+
+  /** Case-insensitive substring match on the task title. */
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(1, 100)
+  q?: string;
 }
