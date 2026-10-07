@@ -34,8 +34,8 @@ curl -i -b cookies.txt http://localhost:3000/api/v1/users/me
 `DELETE /api/v1/users/me` (any signed-in user, `204`) is the in-app account deletion both app stores
 require. `UsersService.purge` deletes everything the user owns, children first, in one transaction:
 recordings, session tasks, sessions, routine tasks, routines, then the user. Better Auth's sessions
-and accounts cascade. The recording objects and the profile photo in GCS are deleted only after the commit, so a storage
-failure can't leave a half-deleted account: it is logged as an orphaned object and the request still
+and accounts cascade. The recording objects and the profile photo in GCS are deleted only after the
+commit, so a storage failure can't leave a half-deleted account: it is logged as an orphaned object and the request still
 succeeds. The admin `DELETE /api/v1/users/:id` uses the same purge. Better Auth's own
 `/auth/delete-user` stays disabled, because it would bypass this ordering and the storage cleanup.
 

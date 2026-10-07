@@ -193,7 +193,61 @@ describe('TasksService', () => {
 
       const result = await service.findAll({ page: 2, limit: 5 });
 
-      expect(cache.set).toHaveBeenCalledWith('tasks:list:v0:2:5::', result);
+      expect(cache.set).toHaveBeenCalledWith('tasks:list:v0:2:5:::', result);
+    });
+
+    it('filters on a case-insensitive title match', async () => {
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.task.count.mockResolvedValue(0);
+
+      await service.findAll({ q: 'Penta', category: 'technique' });
+
+      const expectedWhere = {
+        category: 'technique',
+        title: { contains: 'Penta', mode: 'insensitive' },
+      };
+      expect(prisma.task.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere }),
+      );
+      expect(prisma.task.count).toHaveBeenCalledWith({ where: expectedWhere });
+    });
+
+    it('escapes LIKE wildcards so they match literally', async () => {
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.task.count.mockResolvedValue(0);
+
+      await service.findAll({ q: '100%_a\\b' });
+
+      expect(prisma.task.count).toHaveBeenCalledWith({
+        where: {
+          title: { contains: '100\\%\\_a\\\\b', mode: 'insensitive' },
+        },
+      });
+    });
+
+    it('keys a search by its lower-cased, encoded text', async () => {
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.task.count.mockResolvedValue(0);
+      cache.get.mockResolvedValue(undefined);
+
+      const result = await service.findAll({ q: 'Blues: A/B' });
+
+      expect(cache.set).toHaveBeenCalledWith(
+        'tasks:list:v0:1:20:::blues%3A%20a%2Fb',
+        result,
+      );
+    });
+
+    it('gives different searches different keys', async () => {
+      prisma.task.findMany.mockResolvedValue([]);
+      prisma.task.count.mockResolvedValue(0);
+      cache.get.mockResolvedValue(undefined);
+
+      await service.findAll({ q: 'blues' });
+      await service.findAll({ q: 'jazz' });
+
+      const keys = cache.set.mock.calls.map(([key]) => key as string);
+      expect(new Set(keys).size).toBe(2);
     });
 
     it('falls back to Prisma when the cache is down on read', async () => {

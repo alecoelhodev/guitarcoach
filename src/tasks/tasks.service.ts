@@ -73,6 +73,7 @@ export class TasksService {
       limit,
       query.category,
       query.difficulty,
+      query.q,
     );
     const cached = await this.safeCacheGet<PaginatedResult<Task>>(cacheKey);
     if (cached) {
@@ -82,6 +83,9 @@ export class TasksService {
     const where: Prisma.TaskWhereInput = {
       ...(query.category !== undefined && { category: query.category }),
       ...(query.difficulty !== undefined && { difficulty: query.difficulty }),
+      ...(query.q !== undefined && {
+        title: { contains: escapeLike(query.q), mode: 'insensitive' },
+      }),
     };
 
     const [data, total] = await Promise.all([
@@ -192,10 +196,14 @@ export class TasksService {
     limit: number,
     category?: string,
     difficulty?: string,
+    q?: string,
   ): Promise<string> {
     const version =
       (await this.safeCacheGet<number>(TASK_LIST_VERSION_KEY)) ?? 0;
-    return `${TASK_CACHE_PREFIX}:list:v${version}:${page}:${limit}:${category ?? ''}:${difficulty ?? ''}`;
+    // Lower-cased because the match is case-insensitive; encoded so a ':' in the search
+    // can't shift the other segments.
+    const search = q === undefined ? '' : encodeURIComponent(q.toLowerCase());
+    return `${TASK_CACHE_PREFIX}:list:v${version}:${page}:${limit}:${category ?? ''}:${difficulty ?? ''}:${search}`;
   }
 
   private async bumpListCacheVersion(): Promise<void> {
@@ -251,4 +259,12 @@ export class TasksService {
       this.logger.warn(`Cache del failed for key "${key}"`, error);
     }
   }
+}
+
+/**
+ * Prisma passes `contains` straight into ILIKE without escaping, so a search for `%` or `_`
+ * would match every title. Postgres' default LIKE escape character is the backslash.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
 }
