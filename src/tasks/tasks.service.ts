@@ -65,6 +65,14 @@ export class TasksService {
     return task;
   }
 
+  async createMany(dtos: CreateTaskDto[]): Promise<TaskResponseDto[]> {
+    const tasks = await this.prisma.$transaction(
+      dtos.map((data) => this.prisma.task.create({ data })),
+    );
+    await this.bumpListCacheVersion();
+    return tasks;
+  }
+
   async findAll(query: FindTasksQueryDto): Promise<PaginatedTasksResponseDto> {
     const page = query.page ?? DEFAULT_PAGE;
     const limit = query.limit ?? DEFAULT_LIMIT;

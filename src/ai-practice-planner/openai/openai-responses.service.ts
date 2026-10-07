@@ -10,6 +10,7 @@ import { zodResponsesFunction, zodTextFormat } from 'openai/helpers/zod';
 import { EnvironmentVariables } from '../../config/env.validation';
 import { meters } from '../../observability/metrics/meters';
 import { PracticePlanSchema } from '../dto/practice-plan.schema';
+import { TaskDraftsSchema, TaskDraftsWire } from '../dto/task-drafts.schema';
 import { CreateRoutineArgsSchema } from '../tools/create-routine.types';
 import {
   AiProvider,
@@ -26,6 +27,15 @@ const SYSTEM_INSTRUCTIONS =
   'that the task durations should reasonably add up to. Use web search only when it would ' +
   'materially improve the plan (e.g. researching an unfamiliar technique) -- it is not ' +
   'required for every request. Always set requiresConfirmation to true.';
+
+const TASK_DRAFT_INSTRUCTIONS =
+  'You write practice tasks for a guitar task library. Given a request and a count, return ' +
+  'exactly that many distinct tasks. Each has a short imperative title, a description of ' +
+  'what to practise and how (sections, tempo targets, what to listen for), a category ' +
+  '(technique, theory or repertoire), a difficulty (easy, medium or hard), and a ' +
+  'referenceLink to a lesson, tab or recording that helps, or null if you have none. Use ' +
+  'web search to find real songs and reliable links; never invent a URL. Do not repeat a ' +
+  'task the library already has.';
 
 const CONFIRMATION_PROMPT =
   'The user has confirmed this plan. Call create_routine now to persist it.';
@@ -166,6 +176,37 @@ export class OpenAiResponsesService implements AiProvider {
     }
 
     return { plan: response.output_parsed, previousResponseId: response.id };
+  }
+
+  async generateTaskDrafts(
+    prompt: string,
+    count: number,
+    existingTitles: string[],
+  ): Promise<TaskDraftsWire> {
+    const library = existingTitles.length
+      ? `\n\nThe library already has: ${JSON.stringify(existingTitles)}.`
+      : '';
+    const response = await this.instrumentedParse(() =>
+      this.client.responses.parse({
+        model: this.model,
+        instructions: TASK_DRAFT_INSTRUCTIONS + library,
+        input: `Create ${count} tasks. Request: ${prompt}`,
+        tools: [{ type: 'web_search' }],
+        text: { format: zodTextFormat(TaskDraftsSchema, 'task_drafts') },
+      }),
+    );
+
+    if (response.status !== 'completed') {
+      throw new BadGatewayException(
+        `OpenAI task draft generation did not complete: ${describeIncompleteResponse(response)}`,
+      );
+    }
+    if (!response.output_parsed) {
+      throw new BadGatewayException(
+        'OpenAI returned a response that did not match the expected task drafts schema',
+      );
+    }
+    return response.output_parsed;
   }
 
   async confirmAndCreateRoutine(

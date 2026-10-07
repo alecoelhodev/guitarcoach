@@ -315,6 +315,28 @@ describe('TasksService', () => {
     });
   });
 
+  describe('createMany', () => {
+    it('creates every task in one transaction and bumps the list cache once', async () => {
+      const created = [buildTask({ id: 'a' }), buildTask({ id: 'b' })];
+      prisma.task.create.mockImplementation((args: unknown) => args);
+      prisma.$transaction.mockResolvedValue(created);
+      cache.get.mockResolvedValue(2);
+
+      const result = await service.createMany([
+        { title: 'Riff A' },
+        { title: 'Riff B' },
+      ]);
+
+      expect(result).toEqual(created);
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        { data: { title: 'Riff A' } },
+        { data: { title: 'Riff B' } },
+      ]);
+      expect(cache.set).toHaveBeenCalledTimes(1);
+      expect(cache.set).toHaveBeenCalledWith('tasks:list:version', 3, 0);
+    });
+  });
+
   describe('createPrivate', () => {
     it('stamps the owner, and leaves the shared list cache alone', async () => {
       prisma.task.create.mockResolvedValue(buildTask({ ownerId: 'u1' }));
