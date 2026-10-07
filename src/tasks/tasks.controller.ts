@@ -11,7 +11,8 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { Roles } from '@thallesp/nestjs-better-auth';
+import { Roles, Session } from '@thallesp/nestjs-better-auth';
+import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { FindTasksQueryDto } from './dto/find-tasks-query.dto';
 import {
@@ -39,8 +40,11 @@ export class TasksController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<TaskResponseDto> {
-    return this.tasksService.findById(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Session() session: UserSession,
+  ): Promise<TaskResponseDto> {
+    return this.tasksService.findById(id, session.user.id);
   }
 
   @Patch(':id')

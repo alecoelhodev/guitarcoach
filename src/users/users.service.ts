@@ -129,6 +129,8 @@ export class UsersService {
       await tx.practiceSession.deleteMany({ where: { userId } });
       await tx.routineTask.deleteMany({ where: { routine: { userId } } });
       await tx.routine.deleteMany({ where: { userId } });
+      // After the session and routine rows above, the only things that can point at them.
+      await tx.task.deleteMany({ where: { ownerId: userId } });
       await tx.user.delete({ where: { id: userId } });
 
       const avatar = ownAvatarObject(userId, user.image);

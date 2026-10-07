@@ -109,6 +109,7 @@ type MockPrismaService = {
     delete: jest.Mock;
     count: jest.Mock;
   };
+  task: { count: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -148,6 +149,8 @@ describe('RoutinesService', () => {
         delete: jest.fn(),
         count: jest.fn(),
       },
+      // assertTasksVisible: every requested task is visible unless a test says otherwise.
+      task: { count: jest.fn().mockResolvedValue(1) },
       $transaction: jest.fn(),
     };
 
@@ -515,6 +518,21 @@ describe('RoutinesService', () => {
   });
 
   describe('addTask', () => {
+    it("treats another user's private task as missing, and writes nothing", async () => {
+      prisma.task.count.mockResolvedValue(0);
+
+      await expect(
+        service.addTask(USER_ID, ROUTINE_ID, { taskId: 'private-task' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.task.count).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['private-task'] },
+          OR: [{ ownerId: null }, { ownerId: USER_ID }],
+        },
+      });
+      expect(prisma.routineTask.create).not.toHaveBeenCalled();
+    });
+
     it('appends the task at the next position when none is given', async () => {
       prisma.routineTask.findFirst.mockResolvedValue(
         buildRoutineTask({ position: 3 }),

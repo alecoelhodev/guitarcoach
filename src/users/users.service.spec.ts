@@ -42,6 +42,7 @@ type MockPrismaService = {
   practiceSession: { deleteMany: jest.Mock };
   routineTask: { deleteMany: jest.Mock };
   routine: { deleteMany: jest.Mock };
+  task: { deleteMany: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -69,6 +70,7 @@ describe('UsersService', () => {
       practiceSession: { deleteMany: jest.fn() },
       routineTask: { deleteMany: jest.fn() },
       routine: { deleteMany: jest.fn() },
+      task: { deleteMany: jest.fn() },
       // The interactive transaction runs against the same mock client.
       $transaction: jest.fn((fn: (tx: unknown) => unknown) => fn(prisma)),
     };
