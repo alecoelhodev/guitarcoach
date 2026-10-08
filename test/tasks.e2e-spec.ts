@@ -285,6 +285,48 @@ describe('TasksController (e2e)', () => {
       expect((response.body as TaskResponseBody).difficulty).toBe('medium');
     });
 
+    it('clears the link, category and difficulty when sent null', async () => {
+      const created = await createTask({
+        title: 'Riff A',
+        category: 'repertoire',
+        difficulty: 'hard',
+        referenceLink: 'https://example.com/broken',
+      }).expect(201);
+      const { id } = created.body as TaskResponseBody;
+
+      const response = await admin()
+        .patch(`/api/v1/tasks/${id}`)
+        .send({ referenceLink: null, category: null, difficulty: null })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        title: 'Riff A',
+        referenceLink: null,
+        category: null,
+        difficulty: null,
+      });
+    });
+
+    it('refuses to clear the title', async () => {
+      const created = await createTask().expect(201);
+      const { id } = created.body as TaskResponseBody;
+
+      await admin()
+        .patch(`/api/v1/tasks/${id}`)
+        .send({ title: null })
+        .expect(400);
+    });
+
+    it('still validates a link that is set', async () => {
+      const created = await createTask().expect(201);
+      const { id } = created.body as TaskResponseBody;
+
+      await admin()
+        .patch(`/api/v1/tasks/${id}`)
+        .send({ referenceLink: 'not a url' })
+        .expect(400);
+    });
+
     it('returns 404 when the task does not exist', async () => {
       await admin()
         .patch('/api/v1/tasks/00000000-0000-0000-0000-000000000000')

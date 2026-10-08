@@ -32,9 +32,6 @@ export class TaskDraftDto {
 
   @ApiProperty({ enum: TaskDifficulty })
   difficulty: TaskDifficulty;
-
-  @ApiProperty({ nullable: true, type: String })
-  referenceLink: string | null;
 }
 
 export class TaskGeneratorResponseDto {

@@ -11,7 +11,6 @@ interface DraftsBody {
     title: string;
     category: string;
     difficulty: string;
-    referenceLink: string | null;
   }[];
 }
 
@@ -61,8 +60,9 @@ describe('AI task generator and bulk create (e2e)', () => {
       expect(body.drafts[0]).toMatchObject({
         category: 'repertoire',
         difficulty: 'medium',
-        referenceLink: 'https://example.com/lesson',
       });
+      // Every link the model produced on a device was broken, so drafts carry none.
+      expect(body.drafts[0]).not.toHaveProperty('referenceLink');
       // Only shared titles steer the model; nothing new was written.
       expect(fakeAiProvider.lastExistingTitles).toEqual(['Alternate picking']);
       await expect(prisma.task.count()).resolves.toBe(2);

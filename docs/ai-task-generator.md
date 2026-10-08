@@ -10,7 +10,7 @@ curl -b cookies.txt -X POST http://localhost:3000/api/v1/ai/task-generator \
   -H 'Content-Type: application/json' \
   -d '{"prompt":"Improve my 7-string riffs: sections of famous riffs by Dream Theater, Trivium and Periphery","count":5}'
 # => { "drafts": [ { "title": ..., "description": ..., "category": "repertoire",
-#                    "difficulty": "hard", "referenceLink": "https://..." | null }, ... ] }
+#                    "difficulty": "hard" }, ... ] }
 
 # 2. Create the chosen drafts — all or nothing, answers 201 with the created tasks
 curl -b cookies.txt -X POST http://localhost:3000/api/v1/tasks/bulk \
@@ -30,8 +30,10 @@ Notes:
   library's titles (up to 200) so it avoids duplicates.
 - Output is never trusted as-is (`normalizeTaskDrafts`): titles are trimmed and clipped to 200
   characters, drafts with titles under 2 characters are dropped, descriptions are clipped to 2000,
-  a `referenceLink` that isn't http(s) becomes `null`, and extra drafts are cut to `count`. A
-  reply with no usable drafts is a `502`.
+  and extra drafts are cut to `count`. A reply with no usable drafts is a `502`.
+- **Drafts carry no reference link.** Tried on a device, every URL the model produced was broken,
+  web search or not, so the schema has no link field and the instructions forbid URLs. An admin
+  can add a real link afterwards through `PATCH /tasks/:id`.
 - OpenAI timeouts and outages map to `504` / `503`, through the shared `callAiProvider`.
 - Created tasks are shared library tasks (`ownerId` null), unlike the practice planner's private
   ones.

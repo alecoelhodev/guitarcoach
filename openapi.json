@@ -1771,12 +1771,8 @@
       "UpdateTaskDto": {
         "type": "object",
         "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 200
-          },
           "category": {
+            "nullable": true,
             "enum": [
               "technique",
               "theory",
@@ -1785,6 +1781,7 @@
             "type": "string"
           },
           "difficulty": {
+            "nullable": true,
             "enum": [
               "easy",
               "medium",
@@ -1794,7 +1791,13 @@
           },
           "referenceLink": {
             "type": "string",
+            "nullable": true,
             "format": "uri"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 200
           },
           "description": {
             "type": "string"
@@ -2425,10 +2428,6 @@
             ],
             "type": "string"
           },
-          "referenceLink": {
-            "type": "string",
-            "nullable": true
-          },
           "title": {
             "type": "string"
           },
@@ -2439,7 +2438,6 @@
         "required": [
           "category",
           "difficulty",
-          "referenceLink",
           "title",
           "description"
         ]
