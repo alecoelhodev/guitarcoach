@@ -30,7 +30,6 @@ describe('AiTaskGeneratorService', () => {
           description: 'Bars 1-4',
           category: 'repertoire',
           difficulty: 'medium',
-          referenceLink: 'not a link',
         },
       ],
     });
@@ -48,7 +47,6 @@ describe('AiTaskGeneratorService', () => {
         description: 'Bars 1-4',
         category: 'repertoire',
         difficulty: 'medium',
-        referenceLink: null,
       },
     ]);
   });

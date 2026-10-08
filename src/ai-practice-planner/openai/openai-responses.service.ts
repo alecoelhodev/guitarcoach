@@ -32,10 +32,10 @@ const TASK_DRAFT_INSTRUCTIONS =
   'You write practice tasks for a guitar task library. Given a request and a count, return ' +
   'exactly that many distinct tasks. Each has a short imperative title, a description of ' +
   'what to practise and how (sections, tempo targets, what to listen for), a category ' +
-  '(technique, theory or repertoire), a difficulty (easy, medium or hard), and a ' +
-  'referenceLink to a lesson, tab or recording that helps, or null if you have none. Use ' +
-  'web search to find real songs and reliable links; never invent a URL. Do not repeat a ' +
-  'task the library already has.';
+  '(technique, theory or repertoire) and a difficulty (easy, medium or hard). Use web ' +
+  'search only to get real songs, sections and techniques right. Never include a URL, ' +
+  'link or website anywhere, including in the description. Do not repeat a task the ' +
+  'library already has.';
 
 const CONFIRMATION_PROMPT =
   'The user has confirmed this plan. Call create_routine now to persist it.';

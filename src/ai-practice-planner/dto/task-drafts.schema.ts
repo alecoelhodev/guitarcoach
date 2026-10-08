@@ -4,8 +4,8 @@ import { TaskCategory, TaskDifficulty } from '../../generated/prisma/enums';
 
 // Wire schema for the structured output. Like PracticePlanSchema it carries no length
 // limits, which strict-schema conversion doesn't reliably enforce; normalizeTaskDrafts
-// applies the business rules. `referenceLink` is nullable rather than optional because
-// strict mode requires every property.
+// applies the business rules. There is deliberately no link field: on a device every URL
+// the model produced was broken, web search or not.
 export const TaskDraftsSchema = z.object({
   tasks: z.array(
     z.object({
@@ -13,7 +13,6 @@ export const TaskDraftsSchema = z.object({
       description: z.string(),
       category: z.enum(TaskCategory),
       difficulty: z.enum(TaskDifficulty),
-      referenceLink: z.string().nullable(),
     }),
   ),
 });
@@ -25,28 +24,14 @@ export interface TaskDraft {
   description: string;
   category: TaskCategory;
   difficulty: TaskDifficulty;
-  referenceLink: string | null;
 }
 
 const TITLE_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
-function webUrlOrNull(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === 'http:' || url.protocol === 'https:'
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Model output is never trusted as-is: titles shorter than `CreateTaskDto` allows are
- * dropped, long text is clipped, and a link that isn't http(s) is dropped rather than
- * failing the batch. Extra drafts are cut to `count`; none at all is a 502.
+ * dropped and long text is clipped. Extra drafts are cut to `count`; none at all is a 502.
  */
 export function normalizeTaskDrafts(
   wire: TaskDraftsWire,
@@ -58,7 +43,6 @@ export function normalizeTaskDrafts(
       description: task.description.trim().slice(0, DESCRIPTION_MAX),
       category: task.category,
       difficulty: task.difficulty,
-      referenceLink: webUrlOrNull(task.referenceLink),
     }))
     .filter((task) => task.title.length >= 2)
     .slice(0, count);

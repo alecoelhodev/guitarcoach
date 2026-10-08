@@ -9,7 +9,6 @@ function draft(
     description: 'Bars 1-8 at 70 bpm.',
     category: 'repertoire',
     difficulty: 'hard',
-    referenceLink: 'https://example.com/lesson',
     ...overrides,
   };
 }
@@ -26,21 +25,7 @@ describe('normalizeTaskDrafts', () => {
       description: 'Bars 1-8 at 70 bpm.',
       category: 'repertoire',
       difficulty: 'hard',
-      referenceLink: 'https://example.com/lesson',
     });
-  });
-
-  it.each([
-    ['not a URL', 'see YouTube'],
-    ['a non-web scheme', 'javascript:alert(1)'],
-    ['missing', null],
-  ])('drops a link that is %s, keeping the draft', (_label, link) => {
-    const [result] = normalizeTaskDrafts(
-      { tasks: [draft({ referenceLink: link })] },
-      1,
-    );
-
-    expect(result.referenceLink).toBeNull();
   });
 
   it('clips long text and skips titles too short for the library', () => {

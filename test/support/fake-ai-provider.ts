@@ -48,7 +48,6 @@ export class FakeAiProvider implements AiProvider {
     description: 'Bars 1-8 at 60% tempo, then build up.',
     category: 'repertoire',
     difficulty: 'medium',
-    referenceLink: 'https://example.com/lesson',
   };
 
   /** The last call's library titles, so a spec can assert what the model was told. */
