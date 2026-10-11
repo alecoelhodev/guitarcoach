@@ -23,14 +23,27 @@ import {
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { TasksService } from './tasks.service';
 
+/** Mirrors the auth guard's @Roles check: the admin plugin may store several roles, comma-separated. */
+function isAdmin(user: { role?: string | string[] | null }): boolean {
+  const roles = Array.isArray(user.role)
+    ? user.role
+    : (user.role ?? '').split(',');
+  return roles.some((role) => role.trim() === 'admin');
+}
+
 @Controller('tasks')
 export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
+  // Open to everyone: an admin's task joins the shared library, anyone else's is private to them.
   @Post()
-  @Roles(['admin'])
-  create(@Body() createTaskDto: CreateTaskDto): Promise<TaskResponseDto> {
-    return this.tasksService.create(createTaskDto);
+  create(
+    @Body() createTaskDto: CreateTaskDto,
+    @Session() session: UserSession,
+  ): Promise<TaskResponseDto> {
+    return isAdmin(session.user)
+      ? this.tasksService.create(createTaskDto)
+      : this.tasksService.createPrivate(session.user.id, createTaskDto);
   }
 
   // The AI task generator's "Create N tasks": one round trip, all or nothing.

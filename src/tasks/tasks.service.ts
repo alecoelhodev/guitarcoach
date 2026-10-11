@@ -148,10 +148,13 @@ export class TasksService {
     return task;
   }
 
-  /** A task only `userId` can see: the AI planner's tasks, kept out of the shared library. */
+  /**
+   * A task only `userId` can see — the AI planner's, or one a non-admin creates — kept out of the
+   * shared library, so the list cache is left alone.
+   */
   async createPrivate(
     userId: string,
-    data: { title: string; description?: string },
+    data: CreateTaskDto,
   ): Promise<TaskResponseDto> {
     return this.prisma.task.create({ data: { ...data, ownerId: userId } });
   }
