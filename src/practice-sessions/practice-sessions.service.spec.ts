@@ -32,6 +32,7 @@ function buildPracticeSession(
     routineId: null,
     title: 'Morning warm-up',
     notes: null,
+    durationSeconds: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
@@ -41,6 +42,7 @@ function buildPracticeSession(
 type MockPrismaService = {
   practiceSession: {
     create: jest.Mock;
+    update: jest.Mock;
     findMany: jest.Mock;
     findFirst: jest.Mock;
     deleteMany: jest.Mock;
@@ -49,6 +51,7 @@ type MockPrismaService = {
   practiceSessionTask: {
     findMany: jest.Mock;
     deleteMany: jest.Mock;
+    createMany: jest.Mock;
   };
   recording: {
     deleteMany: jest.Mock;
@@ -70,6 +73,7 @@ describe('PracticeSessionsService', () => {
     prisma = {
       practiceSession: {
         create: jest.fn(),
+        update: jest.fn(),
         findMany: jest.fn(),
         findFirst: jest.fn(),
         deleteMany: jest.fn(),
@@ -78,12 +82,17 @@ describe('PracticeSessionsService', () => {
       practiceSessionTask: {
         findMany: jest.fn(),
         deleteMany: jest.fn(),
+        createMany: jest.fn(),
       },
       recording: {
         deleteMany: jest.fn(),
       },
-      $transaction: jest.fn((operations: Promise<unknown>[]) =>
-        Promise.all(operations),
+      // Batch form takes an array; the interactive form runs the callback on this same mock.
+      $transaction: jest.fn(
+        (operations: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
+          typeof operations === 'function'
+            ? operations(prisma)
+            : Promise.all(operations),
       ),
     };
     routinesService = {
@@ -241,6 +250,72 @@ describe('PracticeSessionsService', () => {
       expect(prisma.practiceSession.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ skip: 5, take: 5 }),
       );
+    });
+  });
+
+  describe('update', () => {
+    const TASK = { taskId: TASK_ID, durationMinutes: 5, completed: true };
+
+    beforeEach(() => {
+      prisma.practiceSession.findFirst.mockResolvedValue(
+        buildPracticeSession(),
+      );
+      prisma.practiceSession.update.mockResolvedValue(
+        buildPracticeSession({ durationSeconds: 300 }),
+      );
+    });
+
+    it('replaces the tasks and overwrites the fields sent', async () => {
+      const result = await service.update(USER_ID, SESSION_ID, {
+        title: null,
+        durationSeconds: 300,
+        tasks: [TASK],
+      });
+
+      expect(routinesService.assertTasksVisible).toHaveBeenCalledWith(USER_ID, [
+        TASK_ID,
+      ]);
+      expect(prisma.practiceSessionTask.deleteMany).toHaveBeenCalledWith({
+        where: { practiceSessionId: SESSION_ID },
+      });
+      expect(prisma.practiceSessionTask.createMany).toHaveBeenCalledWith({
+        data: [{ practiceSessionId: SESSION_ID, ...TASK }],
+      });
+      expect(prisma.practiceSession.update).toHaveBeenCalledWith({
+        where: { id: SESSION_ID },
+        data: { title: null, durationSeconds: 300 },
+        include: SESSION_TASKS_INCLUDE,
+      });
+      expect(result.durationSeconds).toBe(300);
+    });
+
+    it('leaves the tasks alone when none are sent', async () => {
+      await service.update(USER_ID, SESSION_ID, { notes: 'Better' });
+
+      expect(prisma.practiceSessionTask.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.practiceSessionTask.createMany).not.toHaveBeenCalled();
+    });
+
+    it("404s on a session that isn't the caller's, writing nothing", async () => {
+      prisma.practiceSession.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.update(USER_ID, SESSION_ID, { tasks: [TASK] }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.practiceSession.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: SESSION_ID, userId: USER_ID } }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('maps a missing task to a 404', async () => {
+      prisma.practiceSessionTask.createMany.mockRejectedValue(
+        prismaError('P2003'),
+      );
+
+      await expect(
+        service.update(USER_ID, SESSION_ID, { tasks: [TASK] }),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

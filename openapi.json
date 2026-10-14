@@ -1275,6 +1275,44 @@
         "tags": [
           "PracticeSessions"
         ]
+      },
+      "patch": {
+        "operationId": "PracticeSessionsController_update",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePracticeSessionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeSessionResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "PracticeSessions"
+        ]
       }
     },
     "/api/v1/practice-sessions/{sessionId}/recordings": {
@@ -2068,6 +2106,10 @@
             "type": "string",
             "format": "uuid"
           },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
           "tasks": {
             "type": "array",
             "items": {
@@ -2143,6 +2185,10 @@
             "type": "string",
             "nullable": true
           },
+          "durationSeconds": {
+            "type": "number",
+            "nullable": true
+          },
           "sessionTasks": {
             "type": "array",
             "items": {
@@ -2200,6 +2246,31 @@
         "required": [
           "deletedCount"
         ]
+      },
+      "UpdatePracticeSessionDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "durationSeconds": {
+            "type": "number",
+            "minimum": 0
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreatePracticeSessionTaskDto"
+            }
+          }
+        }
       },
       "RecordingResponseDto": {
         "type": "object",

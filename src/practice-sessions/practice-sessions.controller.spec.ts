@@ -22,6 +22,7 @@ function buildPracticeSession(
     userId: USER_ID,
     title: 'Morning warm-up',
     notes: null,
+    durationSeconds: null,
     routineId: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -56,6 +57,7 @@ describe('PracticeSessionsController', () => {
   let controller: PracticeSessionsController;
   let practiceSessionsService: {
     create: jest.Mock;
+    update: jest.Mock;
     findAll: jest.Mock;
     findById: jest.Mock;
     deleteByTitle: jest.Mock;
@@ -68,6 +70,7 @@ describe('PracticeSessionsController', () => {
   beforeEach(async () => {
     practiceSessionsService = {
       create: jest.fn(),
+      update: jest.fn(),
       findAll: jest.fn(),
       findById: jest.fn(),
       deleteByTitle: jest.fn(),
@@ -108,6 +111,22 @@ describe('PracticeSessionsController', () => {
       title: 'Morning warm-up',
     });
     expect(result).toEqual(created);
+  });
+
+  it('scopes update() to the session user', async () => {
+    const updated = buildPracticeSession({ durationSeconds: 90 });
+    practiceSessionsService.update.mockResolvedValue(updated);
+
+    const result = await controller.update(buildSession(), SESSION_ID, {
+      durationSeconds: 90,
+    });
+
+    expect(practiceSessionsService.update).toHaveBeenCalledWith(
+      USER_ID,
+      SESSION_ID,
+      { durationSeconds: 90 },
+    );
+    expect(result).toEqual(updated);
   });
 
   it('scopes findAll() to the session user', async () => {

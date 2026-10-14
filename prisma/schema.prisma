@@ -161,13 +161,15 @@ model RoutineTask {
 }
 
 model PracticeSession {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  routineId String?  @map("routine_id") @db.Uuid
-  title     String?  @db.VarChar
-  notes     String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  routineId       String?  @map("routine_id") @db.Uuid
+  title           String?  @db.VarChar
+  notes           String?
+  /// Elapsed practice time, so a resumed session's clock carries on. Null before resume existed.
+  durationSeconds Int?     @map("duration_seconds")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   user         User                  @relation(fields: [userId], references: [id])
   routine      Routine?              @relation(fields: [routineId], references: [id])
