@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RoutinesService } from '../routines/routines.service';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import { FindPracticeSessionsQueryDto } from './dto/find-practice-sessions-query.dto';
+import { UpdatePracticeSessionDto } from './dto/update-practice-session.dto';
 import {
   PaginatedPracticeSessionsResponseDto,
   PracticeSessionResponseDto,
@@ -96,6 +97,50 @@ export class PracticeSessionsService {
           }),
         },
         include: SESSION_TASKS_INCLUDE,
+      });
+    } catch (error) {
+      if (isPrismaErrorCode(error, PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT)) {
+        throw new NotFoundException('One or more tasks were not found');
+      }
+      throw error;
+    }
+  }
+
+  /** A resumed session's Finish: fields sent are overwritten, `tasks` replaces the list. */
+  async update(
+    userId: string,
+    id: string,
+    dto: UpdatePracticeSessionDto,
+  ): Promise<PracticeSessionResponseDto> {
+    const { tasks, ...fields } = dto;
+    await this.findById(userId, id);
+    if (tasks?.length) {
+      await this.routinesService.assertTasksVisible(
+        userId,
+        tasks.map((task) => task.taskId),
+      );
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (tasks) {
+          await tx.practiceSessionTask.deleteMany({
+            where: { practiceSessionId: id },
+          });
+          await tx.practiceSessionTask.createMany({
+            data: tasks.map((task) => ({
+              practiceSessionId: id,
+              taskId: task.taskId,
+              durationMinutes: task.durationMinutes,
+              completed: task.completed,
+            })),
+          });
+        }
+        return tx.practiceSession.update({
+          where: { id },
+          data: fields,
+          include: SESSION_TASKS_INCLUDE,
+        });
       });
     } catch (error) {
       if (isPrismaErrorCode(error, PRISMA_ERROR_FOREIGN_KEY_CONSTRAINT)) {

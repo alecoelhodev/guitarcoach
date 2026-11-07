@@ -34,6 +34,9 @@ export class PracticeSessionResponseDto {
   @ApiProperty({ required: false, nullable: true })
   notes?: string | null;
 
+  @ApiProperty({ required: false, nullable: true })
+  durationSeconds?: number | null;
+
   createdAt: Date;
   updatedAt: Date;
 

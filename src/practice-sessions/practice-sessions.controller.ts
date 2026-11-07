@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFile,
@@ -17,6 +18,7 @@ import type { UserSession } from '@thallesp/nestjs-better-auth';
 import { CreatePracticeSessionDto } from './dto/create-practice-session.dto';
 import { DeletePracticeSessionsQueryDto } from './dto/delete-practice-sessions-query.dto';
 import { FindPracticeSessionsQueryDto } from './dto/find-practice-sessions-query.dto';
+import { UpdatePracticeSessionDto } from './dto/update-practice-session.dto';
 import {
   DeleteResultResponseDto,
   PaginatedPracticeSessionsResponseDto,
@@ -73,6 +75,15 @@ export class PracticeSessionsController {
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
   ): Promise<PracticeSessionResponseDto> {
     return this.practiceSessionsService.findById(session.user.id, sessionId);
+  }
+
+  @Patch(':sessionId')
+  update(
+    @Session() session: UserSession,
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Body() dto: UpdatePracticeSessionDto,
+  ): Promise<PracticeSessionResponseDto> {
+    return this.practiceSessionsService.update(session.user.id, sessionId, dto);
   }
 
   @Post(':sessionId/recordings')

@@ -242,6 +242,69 @@ describe('PracticeSessionsController (e2e)', () => {
     });
   });
 
+  describe('PATCH /api/v1/practice-sessions/:sessionId', () => {
+    it("replaces a resumed session's tasks, time and title", async () => {
+      const user = await seedUser();
+      const task = await prisma.task.create({ data: { title: 'Scales' } });
+      const created = (
+        await createPracticeSession(user.id, {
+          title: 'Morning warm-up',
+          durationSeconds: 60,
+          tasks: [{ taskId: task.id, durationMinutes: 1, completed: false }],
+        }).expect(201)
+      ).body as PracticeSessionResponseBody & { durationSeconds: number };
+      expect(created.durationSeconds).toBe(60);
+
+      const response = await asUser(user.id)
+        .patch(`/api/v1/practice-sessions/${created.id}`)
+        .send({
+          title: null,
+          durationSeconds: 150,
+          tasks: [{ taskId: task.id, durationMinutes: 2, completed: true }],
+        })
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        id: created.id,
+        title: null,
+        durationSeconds: 150,
+        sessionTasks: [
+          expect.objectContaining({
+            taskId: task.id,
+            durationMinutes: 2,
+            completed: true,
+          }),
+        ],
+      });
+    });
+
+    it("returns 404 for another user's session", async () => {
+      const owner = await seedUser({ email: 'owner@example.com' });
+      const other = await seedUser({
+        email: 'other@example.com',
+        displayName: 'Other',
+      });
+      const created = (await createPracticeSession(owner.id).expect(201))
+        .body as PracticeSessionResponseBody;
+
+      await asUser(other.id)
+        .patch(`/api/v1/practice-sessions/${created.id}`)
+        .send({ durationSeconds: 1 })
+        .expect(404);
+    });
+
+    it('rejects a negative duration', async () => {
+      const user = await seedUser();
+      const created = (await createPracticeSession(user.id).expect(201))
+        .body as PracticeSessionResponseBody;
+
+      await asUser(user.id)
+        .patch(`/api/v1/practice-sessions/${created.id}`)
+        .send({ durationSeconds: -1 })
+        .expect(400);
+    });
+  });
+
   describe('POST /api/v1/practice-sessions/:sessionId/recordings', () => {
     it('uploads a valid audio file and persists its metadata', async () => {
       const user = await seedUser();
