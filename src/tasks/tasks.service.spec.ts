@@ -344,10 +344,16 @@ describe('TasksService', () => {
       await service.createPrivate('u1', {
         title: 'Riff A',
         description: 'Bars 1-4',
+        difficulty: 'easy',
       });
 
       expect(prisma.task.create).toHaveBeenCalledWith({
-        data: { title: 'Riff A', description: 'Bars 1-4', ownerId: 'u1' },
+        data: {
+          title: 'Riff A',
+          description: 'Bars 1-4',
+          difficulty: 'easy',
+          ownerId: 'u1',
+        },
       });
       expect(cache.set).not.toHaveBeenCalled();
     });

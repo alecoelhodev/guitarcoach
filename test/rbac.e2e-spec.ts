@@ -30,7 +30,7 @@ describe('Role-based access control (e2e)', () => {
     await app.close();
   });
 
-  const as = (role?: string) => requestAs(app, role);
+  const as = (role?: string, userId?: string) => requestAs(app, role, userId);
 
   const seedTask = () =>
     prisma.task.create({ data: { title: 'Chromatic warm-up' } });
@@ -53,10 +53,6 @@ describe('Role-based access control (e2e)', () => {
       const task = await seedTask();
 
       await as('user')
-        .post('/api/v1/tasks')
-        .send({ title: 'New task' })
-        .expect(403);
-      await as('user')
         .patch(`/api/v1/tasks/${task.id}`)
         .send({ title: 'Renamed' })
         .expect(403);
@@ -75,6 +71,22 @@ describe('Role-based access control (e2e)', () => {
         .send({ title: 'Renamed' })
         .expect(200);
       await as('admin').delete(`/api/v1/tasks/${task.id}`).expect(204);
+    });
+
+    it('lets a non-admin create a task only they can see', async () => {
+      const creator = await seedUser();
+      const created = await as('user', creator.id)
+        .post('/api/v1/tasks')
+        .send({ title: 'My riff' })
+        .expect(201);
+      const id = (created.body as { id: string }).id;
+
+      await as('user', creator.id).get(`/api/v1/tasks/${id}`).expect(200);
+      await as('user').get(`/api/v1/tasks/${id}`).expect(404);
+      const list = await as('admin').get('/api/v1/tasks').expect(200);
+      expect((list.body as { data: { id: string }[] }).data).not.toContainEqual(
+        expect.objectContaining({ id }),
+      );
     });
 
     it('allows any authenticated role to read tasks', async () => {
